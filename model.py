@@ -11,12 +11,10 @@ import dgl
 import dgl.nn as dnn
 import dgl.function as dfn
 import copy
-import yaml
 import math
 from pyproj import Geod
 from shapely.geometry import Point, LineString
 from pypower.api import ppoption, runpf
-import os, sys
 
 
 class SAGE(nn.Module):
@@ -683,7 +681,7 @@ class ElecNoStep:
         return np.array(Bus_data), np.array(Generator_data), np.array(Branch_data)
 
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 class Net(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -706,8 +704,8 @@ class DQN(nn.Module):
         super().__init__()
 
         self.embed_dim = in_dim
-        self.enet = Net(in_dim, hid_dim, out_dim)
-        self.tnet = Net(in_dim, hid_dim, out_dim)
+        self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+        self.tnet = Net(in_dim, hid_dim, out_dim).to(device)
         self.learning_step = 0
         self.memory_num = 0
         self.mem_cap = memory_capacity
@@ -728,11 +726,11 @@ class DQN(nn.Module):
     def choose_node(self, features, state, choosen, exist):
 
         node_num = features.shape[0]
-
+        features = features.to(device)
         if np.random.uniform() < self.epsilon:
-            outputs = self.enet(features)
-            s_mat = torch.tile(state, (node_num, 1))
-            Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1)
+            outputs = self.enet(features).to(device)
+            s_mat = torch.tile(state, (node_num, 1)).to(device)
+            Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
             Q_cp = Q_values.data.cpu().numpy()
             Q_cp[choosen] = 0
             node = int(np.argmax(Q_cp)) 
@@ -763,32 +761,32 @@ class DQN(nn.Module):
         sample_idx = np.random.choice(self.mem_cap, self.bsize)
         b_memory = self.reply_buffer[sample_idx, :]
         b_s = b_memory[:, :self.embed_dim]
-        b_a = torch.LongTensor(b_memory[:, self.embed_dim: self.embed_dim + 1].astype(int)).reshape(self.bsize, -1)
-        b_r = torch.FloatTensor(b_memory[:, self.embed_dim+1:self.embed_dim+2])
+        b_a = torch.LongTensor(b_memory[:, self.embed_dim: self.embed_dim + 1].astype(int)).reshape(self.bsize, -1).to(device)
+        b_r = torch.FloatTensor(b_memory[:, self.embed_dim+1:self.embed_dim+2]).to(device)
         b_s_ = b_memory[:, -self.embed_dim:]
 
         # q_eval
-        eval_out = self.enet(features)
-        q_eval = torch.zeros((self.bsize, node_num), dtype=torch.float)
+        eval_out = self.enet(features).to(device)
+        q_eval = torch.zeros((self.bsize, node_num), dtype=torch.float).to(device)
         for idx, s in enumerate(b_s):
-            s_mat = torch.FloatTensor(np.tile(s, (node_num, 1)))
-            Q = torch.sum((eval_out * s_mat), axis=1).reshape(node_num, -1)
+            s_mat = torch.FloatTensor(np.tile(s, (node_num, 1))).to(device)
+            Q = torch.sum((eval_out * s_mat), axis=1).reshape(node_num, -1).to(device)
             q_eval[idx] = Q.reshape(-1, node_num)
         
         # q_targ
-        targ_out = self.tnet(features)
-        q_next = torch.zeros((self.bsize, node_num), dtype=torch.float)
+        targ_out = self.tnet(features).to(device)
+        q_next = torch.zeros((self.bsize, node_num), dtype=torch.float).to(device)
         for idx, _s in enumerate(b_s_):
-            _s_mat = torch.FloatTensor(np.tile(_s, (node_num, 1)))
-            Q = torch.sum((targ_out * _s_mat), axis=1).reshape(node_num, -1)
+            _s_mat = torch.FloatTensor(np.tile(_s, (node_num, 1))).to(device)
+            Q = torch.sum((targ_out * _s_mat), axis=1).reshape(node_num, -1).to(device)
             q_next[idx] = Q.reshape(-1, node_num)
 
         # print(q_eval.shape)   [20, 10887]
         # print(q_next.shape)   [20, 10887]
 
         # q_target
-        q_eval = torch.gather(q_eval, 1, b_a)
-        q_target = b_r + (self.gamma * torch.max(q_next,dim=1)[0]).reshape(self.bsize, -1)
+        q_eval = torch.gather(q_eval, 1, b_a).to(device)
+        q_target = b_r + (self.gamma * torch.max(q_next,dim=1)[0]).reshape(self.bsize, -1).to(device)
 
         loss = self.loss(q_eval, q_target)
         self.optimizer.zero_grad()

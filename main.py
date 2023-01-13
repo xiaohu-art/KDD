@@ -37,6 +37,8 @@ EPSILON = args.epsilon
 MEMORY_CAPACITY = 1000
 TARGET_REPLACE_ITER = 25
 
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
+
 if __name__ == "__main__":
 
     egraph = ElecGraph(file=EFILE,
@@ -66,15 +68,16 @@ if __name__ == "__main__":
                 lr=LR,
                 epsilon=EPSILON,
                 gamma=GAMMA)
-    if args.feat == "pretrain":
+    if args.feat == "ptr":
         features = egraph.feat.detach()
-    else:
+    elif args.feat == "rdn":
         features = torch.rand(egraph.node_num, EMBED_DIM)
 
     initial_power = elec_env.ruin([])
     limit = initial_power * 0.2
 
-    print(Fore.RED,Back.YELLOW,'\nbegin attacking ...')
+    print()
+    print(Fore.RED,Back.YELLOW,'begin attacking ...')
     print(Style.RESET_ALL)
     for epoch in range(EPOCH):
 
@@ -123,4 +126,4 @@ if __name__ == "__main__":
                         )
                 print(Style.RESET_ALL)
 
-            torch.save(agent.enet.state_dict(), 'elec.pt')
+    torch.save(agent.enet.state_dict(), 'elec.pt')
