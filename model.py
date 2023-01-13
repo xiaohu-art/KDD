@@ -172,15 +172,6 @@ class TraGraph(Graph):
         node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
         return node_list, dgl.from_networkx(G)
 
-class HiddenPrints:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
-
 BASE = 100000000
 geod = Geod(ellps="WGS84")
 
@@ -194,24 +185,27 @@ def str2int(json_data):
     return new_dict
 
 class ElecNoStep:
-    def __init__(self, config, topology, power_10kv):
+    def __init__(self, config, topology, power_10kv, power_load):
         self.basic_config = config["basic_config"]
         self.index_config = config["index_config"]
         self.topology = topology
         self.power_10kv_valid = power_10kv
+        self.power_load = power_load
         self.get_fixed_info()
         self.reset()
 
     def get_fixed_info(self):
-    
+        # 状态集合,i,级别，电源，500，220，110，10对应着12345 valid 正常， ruined 直接打击 cascaded 级联 stop 上游没电导致的停电
         self.facility_state_dict_valid = {
             i: {"valid": set(), "ruined": set(), "cascaded": set(),"stopped": set()} for i in range(1, 6)
         }
         for i, key in enumerate(self.topology):
-            if i == 5:
+            if i == 4:
                 break
             self.facility_state_dict_valid[i+1]["valid"] = set(self.topology[key].keys())
+        self.facility_state_dict_valid[5]['valid'] = set([5*BASE + i for i in range(10227)])
 
+        # 计算节点数量
         self.power_num = len(self.topology['power'])
         self.trans500_num = len(self.topology['500kv'])
         self.trans220_num = len(self.topology['220kv'])
@@ -241,12 +235,30 @@ class ElecNoStep:
                             ]
                         )
                         self.distance[(node_id1, node_id2)] = geod.geometry_length(line_string) / 1e4
-        
+        # self.distance = {}
+        # # key_list = [None, 'power', '500kv', '220kv', '110kv']
+        # with open('./datasets/elec_flow_input.json', 'r') as f:
+        #     data_elec = json.load(f)
+        # for geo_data in data_elec:
+        #     if geo_data['type'] == 'Feature':
+        #         if geo_data["geometry"]["type"] == "LineString":
+        #             relation = tuple(geo_data["properties"]["relation"])
+        #             if 5 in np.array(relation) // BASE:
+        #                 # 去掉10kv的边连接
+        #                 continue
+        #             self.distance[relation] = None
+
+        # 110kv及以上正常功率
         self.power_110kv_up_valid = {}
-        
+        # 创建110kv上下游集合
         self.relation_data_110kv = {}
+
+        
+
         for key in self.topology['110kv']:
             self.relation_data_110kv[key] = {'relaiton_10':set(), 'relation_220':set()}
+            self.power_110kv_up_valid[key] = self.power_load[key] * 1e6
+            
             power_key = 0
             for node in self.topology['110kv'][key]['relation']:
                 if node // BASE == 5:
@@ -255,19 +267,31 @@ class ElecNoStep:
                 else:
                     self.relation_data_110kv[key]['relation_220'].add(node)
             
-            self.power_110kv_up_valid[key] = power_key
-        # print('110kv总功率',sum(self.power_110kv_up_valid.values()))
 
+        # for geo_data in data_elec:
+        #     if geo_data['type'] == 'Feature':
+        #         if geo_data["geometry"]["type"] == "LineString":
+        #             relation = tuple(geo_data["properties"]["relation"])
+        #             if 4 in np.array(relation) // BASE:
+        #                 if 5 in np.array(relation) // BASE:
+        #                     node = relation[1]
+        #                     self.relation_data_110kv[relation[0]]['relaiton_10'].add(node)
+        #                 else:
+        #                     node = relation[0]
+        #                     self.relation_data_110kv[relation[1]]['relation_220'].add(node)
+
+        # 正常潮流计算矩阵
         self.bus_mat_valid, self.gene_mat_valid, self.branch_mat_valid = self.get_flow_mat()
-        # print(self.bus_mat_valid.shape, self.gene_mat_valid.shape, self.branch_mat_valid.shape)
+        
         
         self.bus_mat = self.bus_mat_valid.copy()
         self.branch_mat = self.branch_mat_valid.copy()
         self.gene_mat = self.gene_mat_valid.copy()
 
+        # 220kv以上各点功率
         self.power_110kv_up_valid.update(self.flow_calculate(init=True))
 
-   
+    # init=True时，重置，否则恢复到上一个状态
     def reset(self, init=True):
         if init:
             self.facility_state_dict = copy.deepcopy(self.facility_state_dict_valid)
@@ -292,10 +316,12 @@ class ElecNoStep:
         self.power_10kv_record = self.power_10kv.copy()
         self.power_110kv_up_record = self.power_110kv_up.copy()
 
-    def ruin(self, destory_list):
+    def ruin(self, destory_list, flag = 1):
         self.record()
         use_flow = []
         # print(destory_list)
+        # print(destory_list[0] // BASE)
+        # print(len(self.facility_state_dict[5]["valid"]))
         for id in destory_list:
             if id in self.facility_state_dict[id // BASE]["valid"]:
                 self.facility_state_dict[id // BASE]["ruined"].add(id)
@@ -316,11 +342,10 @@ class ElecNoStep:
             power_up_220kv = self.flow_calculate(use_flow)
             for key in power_up_220kv:
                 if power_up_220kv[key] == 0 and key in self.facility_state_dict[key // BASE]["valid"]:
-                    
                     self.facility_state_dict[key // BASE]["cascaded"].add(key)
                     self.facility_state_dict[key // BASE]["valid"].remove(key)
             self.power_110kv_up.update(power_up_220kv)
-
+            
             invalid_220kv = self.facility_state_dict[3]["ruined"] | self.facility_state_dict[3]["cascaded"]
             for id_110 in self.relation_data_110kv:
                 if id_110 in self.facility_state_dict[4]["valid"] and self.relation_data_110kv[id_110]['relation_220'] <= invalid_220kv:
@@ -331,10 +356,16 @@ class ElecNoStep:
                     self.facility_state_dict[5]["valid"] -= self.relation_data_110kv[id_110]['relaiton_10']
                     for id_10 in self.relation_data_110kv[id_110]['relaiton_10']:
                         self.power_10kv[id_10] = 0
-        return sum(self.power_10kv.values())
+        if flag:
+            return sum(self.power_10kv.values())
+        else:
+            return sum(self.power_10kv.values()), self.facility_state_dict
 
     def flow_calculate(self, use_flow = [], init = False):
-        
+        """
+        潮流计算，返回损坏的220kv以上节点和220kv以上节点功率
+        """
+        # 级联循环
         count = 0
         flag = 1
         destory_first = True
@@ -348,13 +379,10 @@ class ElecNoStep:
                 destory_220kv.append(key)
             else:
                 destory_power.append(key)
-        while_num = 0
         while flag:
-            if while_num > 20:
-                break
             if destory_first:
                 self.delete_power(destory_power)
-                flag_power = np.sum(self.gene_mat[self.trans500_num:self.trans500_num+self.power_num, self.index_config['GEN_STATUS']])
+                flag_power = np.sum(self.gene_mat[:, self.index_config['GEN_STATUS']])
                 if flag_power < 0.1:
                     break
                 self.delete_220kv(destory_220kv)
@@ -364,58 +392,49 @@ class ElecNoStep:
                 if cascade_power.size:
                     count += 1
                 self.delete_power(cascade_power)
-                flag_power = np.sum(self.gene_mat[self.trans500_num:self.trans500_num+self.power_num, self.index_config['GEN_STATUS']])
+                flag_power = np.sum(self.gene_mat[:, self.index_config['GEN_STATUS']])
                 if flag_power < 0.1:
                     break
                 self.delete_220kv(cascade_220kv)
                 self.delete_110kv()
 
-
-            with HiddenPrints():
-                ppc = {
-                    "version": '2',
-                    "baseMVA": 100.0,
-                    "bus": self.bus_mat.copy(),
-                    "gen": self.gene_mat.copy(),
-                    "branch": self.branch_mat.copy()
-                }
-                ppopt = ppoption(OUT_GEN=0)
-                result, _ = runpf(ppc, ppopt, fname = 'test')
+            ppc = {
+                "version": '2',
+                "baseMVA": 100.0,
+                "bus": self.bus_mat.copy(),
+                "gen": self.gene_mat.copy(),
+                "branch": self.branch_mat.copy()
+            }
+            ppopt = ppoption(OUT_GEN=0)
+            result, _ = runpf(ppc, ppopt, fname='test')
 
             if init:
-                
+                # 保存power信息，id，正常功率，运行功率，比值
                 self.info_gene = np.zeros((self.trans500_num+self.power_num, 4))
-                self.info_gene[:,[0, 1]] = result["gen"][:,[0,1]]
-                
+                # self.info_gene[:,[0, 1]] = result["gen"][:,[0,1]]
+                self.info_gene[:, [0, 1]] = result["branch"][0:25][:, [0, 13]]
+                # 保存220kv信息，id，正常功率，运行功率，比值
                 self.info_220kv = np.zeros((self.trans220_num, 4))
                 index_220kv = np.where(result['branch'][:,self.index_config["TAP"]]==2)[0]
                 self.info_220kv[:,[0, 1]] = result["branch"][index_220kv][:,[0,13]]
                 break
             
             index_220kv = np.where(result['branch'][:,self.index_config["TAP"]]==2)[0]
-            # print('*'*50)
-            # print('220kv', index_220kv.shape)
             self.info_220kv[:,2] = result["branch"][index_220kv][:,self.index_config["PF"]]
             self.info_220kv[:,3] = abs(self.info_220kv[:,2] / self.info_220kv[:,1])
-            self.info_gene[:,2] = result["gen"][:,1]
+            self.info_gene[:,2] = result["branch"][0:25][:,self.index_config["PF"]]
             self.info_gene[:,3] = abs(self.info_gene[:,2] / self.info_gene[:,1])
+            # print('info_220kv', self.info_220kv)
             cascade_220kv = np.where(
                 (self.info_220kv[:,3] >= self.basic_config['up_220'])
             )[0]
             cascade_power = np.where(
                 (self.info_gene[:,3] >= self.basic_config['up_power'])
             )[0]
-            for i, id in enumerate(cascade_power):
-                if id < self.trans500_num:
-                    cascade_power[i] += BASE * 2
-                else:
-                    cascade_power[i] += BASE * 1 - self.trans500_num
-            # print("cascade_power", cascade_power)
-            # print("cascade_220kv", cascade_220kv)
-            # print(cascade_power, cascade_220kv)
-            # print("info_220kv", self.info_220kv[cascade_220kv])
+            # print(cascade_power)
+            # print(self.info_gene[cascade_power])
+            # print(result["gen"][cascade_power])
             flag = len(cascade_220kv) + len(cascade_power)
-            while_num += 1
 
         update_power_dict = {}
         
@@ -430,7 +449,7 @@ class ElecNoStep:
                 id = i + BASE * 3
                 update_power_dict[id] = 0
         else:
-            
+            # 更新destory_power中的220kv和500kv功率, 保存220kv及以上{id:功率}到update_power_dict
             update_trans500_power = result["gen"][0:self.trans500_num, self.index_config["PG"]]
             update_gene_power = result["gen"][self.trans500_num:self.trans500_num+self.power_num, self.index_config["PG"]]
             index_220kv = np.where(result['branch'][:,self.index_config["TAP"]]==2)[0]
@@ -449,32 +468,35 @@ class ElecNoStep:
         return update_power_dict
 
     def delete_power(self, destory_power_list):
-        
+        # 处理电源
         for id in destory_power_list:
             if id // BASE == 2:
                 self.gene_mat[id % BASE, self.index_config['GEN_STATUS']] = 0
-                self.branch_mat[id % BASE, self.index_config['BR_STATUS']] = 0
+                # self.branch_mat[id % BASE, self.index_config['BR_STATUS']] = 0
             elif id // BASE == 1:
                 self.gene_mat[id % BASE + self.trans500_num, self.index_config['GEN_STATUS']] = 0
                 # self.branch_mat[id % BASE + self.trans500_num, self.index_config['BR_STATUS']] = 0
-
+                # condi = np.where(
+                #     self.bus_mat[:, self.index_config['BUS_I']] == id % BASE + self.trans500_num
+                # )[0]
+                # self.bus_mat = np.delete(self.bus_mat, condi, axis=0)
+                # condi = np.where(
+                #     self.branch_mat[:, self.index_config['F_BUS']] == id % BASE + self.trans500_num
+                # )[0]
+                # self.branch_mat = np.delete(self.branch_mat, condi, axis=0)
     def delete_220kv(self, destory_220kv_list):
-        
+        # 处理220kv
         for id in destory_220kv_list:
             connect_110kv = np.where(
-                self.branch_mat[:,self.index_config["F_BUS"]] == id % BASE + 2 * (self.power_num + self.trans500_num) + self.trans220_num
+                self.branch_mat[:,0] == id % BASE + 2 * (self.power_num + self.trans500_num) + self.trans220_num
             )[0]
-            # print('len(connect_110kv)', len(connect_110kv))
             self.branch_mat = np.delete(self.branch_mat, connect_110kv, axis=0)
-            # self.branch_mat[id % BASE + self.power_num + self.trans500_num, self.index_config['BR_STATUS']] = 0
-        condi = np.where(self.branch_mat[:,self.index_config["T_BUS"]] > 250)[0]
-        # print("condi",len(condi))
 
     def delete_110kv(self, destory_110kv = []):
-        
+        # 直接摧毁, 此时110kv branch，bus均有, 潮流计算矩阵在不断删除，智能用np.where查找
         if destory_110kv:
             for id in destory_110kv:
-                bus_id = id + 2 * (self.trans500_num + self.power_num + self.trans220_num)
+                bus_id = id % BASE + 2 * (self.trans500_num + self.power_num + self.trans220_num)
                 condi_110kv = np.where(
                     self.branch_mat[:, 1] == bus_id
                 )[0]
@@ -483,23 +505,26 @@ class ElecNoStep:
                     self.bus_mat[:,0] == bus_id
                 )[0]
                 self.bus_mat = np.delete(self.bus_mat, bus_110kv, axis=0)
-        
+        # 110kv的上游两个220kv如果被删除，删除110kv
         else:
-            for id in range(self.trans110_num):
-                bus_id = id + 2 * (self.trans500_num + self.power_num + self.trans220_num)
+            for id in range(self.trans110_num):#110kv数量
+                bus_id = id % BASE + 2 * (self.trans500_num + self.power_num + self.trans220_num)
                 condi_110kv = np.where(
                     self.branch_mat[:, 1] == bus_id
                 )[0]
                 if condi_110kv.size == 0:
-                    
+                    # 删除bus
                     bus_110kv = np.where(
                         self.bus_mat[:,0] == bus_id
                     )[0]
-                    if len(bus_110kv) != 0:
+                    if len(bus_110kv) != 0:#有可能已经删了
                         self.bus_mat = np.delete(self.bus_mat, bus_110kv, axis=0)
     
     def get_flow_mat(self):
-        
+        """
+        由self.topology获取正常运行的flow_mat，每个拓扑只运行一次
+        参看pypower文档
+        """
         Bus_data = []
         Generator_data = []
         Branch_data = []
@@ -510,21 +535,21 @@ class ElecNoStep:
             type_id = 1
             Pd = 0
             Qd = 0
-
+            # 与500kv连接的母线
             if bus_id < self.trans500_num:
                 type_id = 3
                 Vm = 5/1.1
-            
+            # 与发电厂连接的母线
             elif bus_id < self.trans500_num + self.power_num:
                 type_id = 3
                 Vm = 5/1.1
-            
+            # 500kv、发电厂出线以及220kv入线
             elif bus_id < 2 * (self.trans500_num + self.power_num) + self.trans220_num:
                 Vm = 2
-            
+            # 220kv出线
             elif bus_id < 2 * (self.trans500_num + self.power_num + self.trans220_num):
                 Vm = 1
-            
+            # 110kv入线
             else:
                 index_110 = int(bus_id - 2 * (self.trans500_num + self.power_num + self.trans220_num)) + 4 * BASE
                 Pd = self.power_110kv_up_valid[index_110] / 1e6
@@ -551,11 +576,11 @@ class ElecNoStep:
         # Generator data generate
         Generator_num = self.trans500_num + self.power_num
         for bus_id in range(Generator_num):
-            
+            # 500kv电源
             if bus_id < self.trans500_num:
                 Pg = 0
                 Qg = 0
-            
+            # 发电厂
             else:
                 Pg = 0
                 Qg = 0
@@ -585,7 +610,7 @@ class ElecNoStep:
                 ]
             )
 
-       
+        # 变压器支路
         Transformer_num = self.trans500_num + self.power_num + self.trans220_num
         for i in range(Transformer_num):
             r = 0

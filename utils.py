@@ -1,6 +1,7 @@
 import yaml
 import json
-import torch
+
+from model import ElecNoStep
 
 def str2int(json_data):
     
@@ -10,18 +11,63 @@ def str2int(json_data):
     return new_dict
 
 def init_env():
-    with open("./data/datasets/config.yml") as f:
-        config = yaml.safe_load(f)
-    
-    with open('./data/datasets/power_10kv.json') as json_file:
-        power_10 = json.load(json_file)
-    
+
+    with open("./data/electricity/config.yml") as f:
+            config = yaml.safe_load(f)
+       
+    with open('./data/electricity/power_10kv.json') as json_file:
+            power_10 = json.load(json_file)
+
+    with open('./data/electricity/power_110kv.json') as json_file:
+        power_load = json.load(json_file)
+        
     power_10 = str2int(power_10)
-   
-    with open('./data/datasets/all_dict.json') as json_file:
+    power_load = str2int(power_load)
+    
+    with open('./data/electricity/all_dict_correct.json') as json_file:
         topology = json.load(json_file)
     
     for key in topology:
         topology[key] = str2int(topology[key])
+    elec = ElecNoStep(config, topology, power_10, power_load)
     
-    return config, power_10, topology
+    return elec
+
+def calculate_pairwise_connectivity(removal_nodes,Graph):
+
+    graph = Graph.copy()
+    graph.remove_nodes_from(removal_nodes)
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
+    element_of_pc  = [size*(size - 1)/2 for size in size_of_connected_components] 
+    pairwise_connectivity = sum(element_of_pc)
+
+    return pairwise_connectivity
+
+def calculate_size_of_gcc(removal_nodes,Graph):
+
+    graph = Graph.copy()
+    graph.remove_nodes_from(removal_nodes)
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
+    size_of_gcc = max(size_of_connected_components)
+
+    return size_of_gcc
+
+def calculate_anc(removal_nodes,Graph,connectivity = 'pc'):
+    """
+    accumulated normalized connectivity
+    Parameters
+        removal_node: a sequence of nodes(list)
+        Graph: network(networkx)
+        connectivity: predifined connectivity method(str->'pc','gcc')
+    return anc(float->[0,1])
+    """
+    number_of_nodes = len(removal_nodes)
+    if connectivity == 'pc':
+        connectivity_part = [calculate_pairwise_connectivity(removal_nodes[:i], Graph) for i in range(number_of_nodes)] 
+        connectivity_all = calculate_pairwise_connectivity([],Graph)
+    elif connectivity == 'gcc':
+        connectivity_part = [calculate_size_of_gcc(removal_nodes[:i], Graph) for i in range(number_of_nodes)] 
+        connectivity_all = calculate_size_of_gcc([],Graph)
+    anc = sum(connectivity_part)/connectivity_all/number_of_nodes
+
+    return anc

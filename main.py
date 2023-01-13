@@ -21,8 +21,8 @@ init()
 
 # args = parser.parse_args()
 
-EFILE = './data/elec_flow_input.json'
-TFILE = './data/road_junc_map.json'
+EFILE = './data/electricity/elec_flow_input.json'
+TFILE = './data/road/road_junc_map.json'
 ept = './embedding/elec_feat.pt'
 tpt = './embedding/tra_feat.pt'
 EMBED_DIM = 64
@@ -55,8 +55,7 @@ if __name__ == "__main__":
                     epochs=300,
                     pt_path=tpt)
     
-    config, power_10, topology = init_env()
-    elec_env = ElecNoStep(config, topology, power_10)
+    elec_env = init_env()
 
     agent = DQN(in_dim=EMBED_DIM,
                 hid_dim=HID_DIM,
