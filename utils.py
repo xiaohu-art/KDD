@@ -15,13 +15,16 @@ def init_env():
     
     with open('./data/datasets/power_10kv.json') as json_file:
         power_10 = json.load(json_file)
+
+    with open('./data/datasets/power_110kv.json') as json_file:
+        power_load = json.load(json_file)
     
     power_10 = str2int(power_10)
    
-    with open('./data/datasets/all_dict.json') as json_file:
+    with open('./data/all_dict_correct.json') as json_file:
         topology = json.load(json_file)
     
     for key in topology:
         topology[key] = str2int(topology[key])
     
-    return config, power_10, topology
+    return config, power_10, power_load, topology

@@ -62,3 +62,6 @@ index_config:
   T_BUS: 1
   PG: 1
   GEN_STATUS: 7
+  BUS_I: 0
+  F_BUS: 0
+  T_BUS: 1
