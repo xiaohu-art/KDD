@@ -127,4 +127,4 @@ if __name__ == "__main__":
                         )
                 print(Style.RESET_ALL)
 
-    torch.save(agent.enet.state_dict(), 'elec.pt')
+    torch.save(agent.enet.state_dict(), 'elec_'+args.feat+'.pt')
