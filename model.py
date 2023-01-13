@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.parameter import Parameter
 import scipy.sparse as sp
 import networkx as nx
 import numpy as np
@@ -56,9 +55,10 @@ def compute_loss(pos_score, neg_score):
         return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
 
 class Graph():
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs):
+    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         self.graph = None
         self.feat = None
+        self.node_list = None
 
     @property
     def node_num(self):
@@ -72,9 +72,10 @@ class Graph():
         pass
 
     def build_feat(self, embed_dim, hid_dim, feat_dim, 
-                    k, epochs):
+                    k, epochs,
+                    pt_path):
 
-        print('trainging elec features ...')
+        print('trainging features ...')
         embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
         self.graph.ndata['feat'] = embedding.weight
 
@@ -96,28 +97,29 @@ class Graph():
 
         feat = gcn.sage(self.graph, self.graph.ndata['feat'])
         try:
-            torch.save(feat, './embedding/elec_feat.pt')
+            torch.save(feat, pt_path)
             print("saving features sucess")
         except:
             print("saving features failed")
         return feat
 
 class ElecGraph(Graph):
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs):
-        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs)
-        print('electricity networl construction !')
-        self.graph = self.build_graph(file)
+    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
+        print('electricity network construction!')
+        self.node_list, self.graph = self.build_graph(file)
         try:
-            feat = torch.load('./embedding/elec_feat.pt')
+            feat = torch.load(pt_path)
             print('features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
-                                         khop, epochs)
+                                         khop, epochs,
+                                         pt_path)
 
     def build_graph(self, file):
 
-        print('building graph ...')
+        print('building elec graph ...')
         with open(file, 'r') as f:
             data = json.load(f)
         edges = []
@@ -131,5 +133,34 @@ class ElecGraph(Graph):
         G = nx.Graph()
         G.add_edges_from(edges)
 
+        node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
         print('graph builded.')
-        return dgl.from_networkx(G)
+        return node_list, dgl.from_networkx(G)
+
+class TraGraph(Graph):
+    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
+        print('traffice network constrcution!')
+        self.graph = self.build_graph(file)
+        try:
+            feat = torch.load(pt_path)
+            print('features loaded.')
+            self.feat = feat
+        except:
+            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
+                                         khop, epochs,
+                                         pt_path)
+
+    def build_graph(self, file):
+
+        print('building traffic graph ...')
+        with open(file, 'r') as f:
+            data = json.load(f)
+        G = nx.Graph()
+        for road, junc in data.items():
+            if len(junc) == 2:
+                G.add_edge(junc[0], junc[1], id=int(road))
+
+        node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
+        return node_list, dgl.from_networkx(G)
+
