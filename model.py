@@ -110,7 +110,7 @@ class ElecGraph(Graph):
         self.node_list, self.graph = self.build_graph(file)
         try:
             feat = torch.load(pt_path)
-            print('features loaded.')
+            print('elec features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
@@ -144,7 +144,7 @@ class TraGraph(Graph):
         self.graph = self.build_graph(file)
         try:
             feat = torch.load(pt_path)
-            print('features loaded.')
+            print('traffic features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
