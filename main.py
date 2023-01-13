@@ -80,7 +80,8 @@ if __name__ == "__main__":
         state = torch.sum(features, dim=0) / num
         total_reward = 0
         choosen = []
-        exist = list(range(num))
+        # exist = list(range(num))
+        exist = [node for node,id in egraph.node_list.items() if id//100000000 > 2]
         elec_env.reset()
 
         done = False
@@ -107,7 +108,8 @@ if __name__ == "__main__":
 
             state = _state
 
-            if tpower < limit:
+            # if tpower < limit:
+            if len(choosen) == 10:
                 done = True
                 print(Fore.RED,Back.YELLOW)
                 print("\nEpoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),

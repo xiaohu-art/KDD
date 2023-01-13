@@ -130,20 +130,17 @@ class ElecGraph(Graph):
         print('building elec graph ...')
         with open(file, 'r') as f:
             data = json.load(f)
-        edges = []
-        for element in data:
-            prop = element.get('properties')
-            if prop !=  None:
-                edge = prop.get('relation')
-                if edge !=  None:
-                    edges.append(edge)
+        elec_graph = nx.Graph()
+        for key,facility in data.items():
+            for node_id in facility.keys():
+                node = facility[node_id]
+                for neighbor in node['relation']:
+                    if int(node_id)<6e8 and neighbor<6e8:
+                        elec_graph.add_edge(int(node_id),neighbor)
 
-        G = nx.Graph()
-        G.add_edges_from(edges)
-
-        node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
+        node_list : dict = {i:j for i,j in enumerate(list(elec_graph.nodes()))}
         print('graph builded.')
-        return node_list, dgl.from_networkx(G)
+        return node_list, dgl.from_networkx(elec_graph)
 
 class TraGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
@@ -684,6 +681,7 @@ class ElecNoStep:
             )
 
         return np.array(Bus_data), np.array(Generator_data), np.array(Branch_data)
+
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
