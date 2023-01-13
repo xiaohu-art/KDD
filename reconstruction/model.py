@@ -11,52 +11,6 @@ import dgl
 import dgl.nn as dnn
 import dgl.function as dfn
 
-class Graph():
-    def __init__(self):
-        self.graph = None
-        self.adj = None
-        self.feat = None
-
-    def build_graph(self):
-        pass
-
-    def build_adj(self):
-        pass
-
-    def build_feat(self):
-        pass
-
-class ElecGraph(Graph):
-    def __init__(self, file, embed_dim):
-        super().__init__()
-        self.graph = self.build_graph(file)
-        self.node_num = self.graph.num_nodes()
-        self.edge_num = self.graph.num_edges()
-        self.build_feat(embed_dim)
-        self.feat = None
-
-    def build_graph(self, file):
-
-        with open(file, 'r') as f:
-            data = json.load(f)
-        edges = []
-        for element in data:
-            prop = element.get('properties')
-            if prop !=  None:
-                edge = prop.get('relation')
-                if edge !=  None:
-                    edges.append(edge)
-
-        G = nx.Graph()
-        G.add_edges_from(edges)
-
-        return dgl.from_networkx(G)
-
-    def build_feat(self, embed_dim):
-        embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
-        self.graph.ndata['feat'] = embedding.weight
-
-        return 
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -101,39 +55,99 @@ def compute_loss(pos_score, neg_score):
 
         return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
 
+class Graph():
+    def __init__(self, file):
+        pass
+
+    def build_graph(self):
+        pass
+
+    def build_feat(self):
+        pass
+
+class ElecGraph(Graph):
+    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs):
+        super().__init__(file)
+        print('electricity networl construction !')
+        self.graph = self.build_graph(file)
+        self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
+                                    khop, epochs)
+
+    @property
+    def node_num(self):
+        return self.graph.num_nodes()
+
+    @property
+    def egde_num(self):
+        return self.graph.num_edges()
+
+    def build_graph(self, file):
+
+        print('building graph ...')
+        with open(file, 'r') as f:
+            data = json.load(f)
+        edges = []
+        for element in data:
+            prop = element.get('properties')
+            if prop !=  None:
+                edge = prop.get('relation')
+                if edge !=  None:
+                    edges.append(edge)
+
+        G = nx.Graph()
+        G.add_edges_from(edges)
+
+        print('graph builded.')
+        return dgl.from_networkx(G)
+
+    def build_feat(self, embed_dim, hid_dim, feat_dim, 
+                    k, epochs):
+        try:
+            feat = torch.load('../embedding/elec_feat.pt')
+            print('features loaded')
+            return feat
+        except:
+            print('trainging elec features ...')
+            embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
+            self.graph.ndata['feat'] = embedding.weight
+
+            gcn = GCN(embed_dim, hid_dim, feat_dim)
+            optimizer = torch.optim.Adam(gcn.parameters())
+            optimizer.zero_grad()
+
+            for epoch in range(epochs):
+                t = time.time()
+                negative_graph = construct_negative_graph(self.graph, k)
+                pos_score, neg_score = gcn(self.graph, negative_graph, self.graph.ndata['feat'])
+                loss = compute_loss(pos_score, neg_score)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                            " time=", "{:.5f}s".format(time.time() - t)
+                            )
+
+            feat = gcn.sage(self.graph, self.graph.ndata['feat'])
+            try:
+                torch.save(feat, '../embedding/elec_feat.pt')
+                print("saving features sucess")
+            except:
+                print("saving features failed")
+            return feat
 
 FILE = '../data/elec_flow_input.json'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
+KHOP=5
 EPOCH = 500
 
 if __name__ == "__main__":
 
     elec = ElecGraph(file=FILE,
-                    embed_dim=EMBED_DIM)
-
-    k = 5
-    gcn = GCN(EMBED_DIM, HID_DIM, FEAT_DIM)
-    optimizer = torch.optim.Adam(gcn.parameters())
-    optimizer.zero_grad()
-
-    for epoch in range(EPOCH):
-        
-        t = time.time()
-        negative_graph = construct_negative_graph(elec.graph, k)
-        pos_score, neg_score = gcn(elec.graph, negative_graph, elec.graph.ndata['feat'])
-        loss = compute_loss(pos_score, neg_score)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
-                    " time=", "{:.5f}".format(time.time() - t)
-                    )
-
-    elec.feat = gcn.sage(elec.graph, elec.graph.ndata['feat'])
-    try:
-        torch.save(elec.feat, '../embedding/elec_feat.pt')
-        print("saving features sucess")
-    except:
-        print("saving features failed")
+                    embed_dim=EMBED_DIM,
+                    hid_dim=HID_DIM,
+                    feat_dim=FEAT_DIM,
+                    khop=KHOP,
+                    epochs=EPOCH)
+    
