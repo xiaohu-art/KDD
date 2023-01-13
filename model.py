@@ -103,8 +103,8 @@ class ElecGraph(Graph):
     def build_feat(self, embed_dim, hid_dim, feat_dim, 
                     k, epochs):
         try:
-            feat = torch.load('../embedding/elec_feat.pt')
-            print('features loaded')
+            feat = torch.load('./embedding/elec_feat.pt')
+            print('features loaded.')
             return feat
         except:
             print('trainging elec features ...')
@@ -135,19 +135,3 @@ class ElecGraph(Graph):
                 print("saving features failed")
             return feat
 
-FILE = '../data/elec_flow_input.json'
-EMBED_DIM = 64
-HID_DIM = 128
-FEAT_DIM = 64
-KHOP=5
-EPOCH = 500
-
-if __name__ == "__main__":
-
-    elec = ElecGraph(file=FILE,
-                    embed_dim=EMBED_DIM,
-                    hid_dim=HID_DIM,
-                    feat_dim=FEAT_DIM,
-                    khop=KHOP,
-                    epochs=EPOCH)
-    
