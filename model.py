@@ -56,22 +56,9 @@ def compute_loss(pos_score, neg_score):
         return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
 
 class Graph():
-    def __init__(self, file):
-        pass
-
-    def build_graph(self):
-        pass
-
-    def build_feat(self):
-        pass
-
-class ElecGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs):
-        super().__init__(file)
-        print('electricity networl construction !')
-        self.graph = self.build_graph(file)
-        self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
-                                    khop, epochs)
+        self.graph = None
+        self.feat = None
 
     @property
     def node_num(self):
@@ -80,6 +67,53 @@ class ElecGraph(Graph):
     @property
     def egde_num(self):
         return self.graph.num_edges()
+
+    def build_graph(self):
+        pass
+
+    def build_feat(self, embed_dim, hid_dim, feat_dim, 
+                    k, epochs):
+
+        print('trainging elec features ...')
+        embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
+        self.graph.ndata['feat'] = embedding.weight
+
+        gcn = GCN(embed_dim, hid_dim, feat_dim)
+        optimizer = torch.optim.Adam(gcn.parameters())
+        optimizer.zero_grad()
+
+        for epoch in range(epochs):
+            t = time.time()
+            negative_graph = construct_negative_graph(self.graph, k)
+            pos_score, neg_score = gcn(self.graph, negative_graph, self.graph.ndata['feat'])
+            loss = compute_loss(pos_score, neg_score)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                        " time=", "{:.4f}s".format(time.time() - t)
+                        )
+
+        feat = gcn.sage(self.graph, self.graph.ndata['feat'])
+        try:
+            torch.save(feat, './embedding/elec_feat.pt')
+            print("saving features sucess")
+        except:
+            print("saving features failed")
+        return feat
+
+class ElecGraph(Graph):
+    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs):
+        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs)
+        print('electricity networl construction !')
+        self.graph = self.build_graph(file)
+        try:
+            feat = torch.load('./embedding/elec_feat.pt')
+            print('features loaded.')
+            self.feat = feat
+        except:
+            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
+                                         khop, epochs)
 
     def build_graph(self, file):
 
@@ -99,39 +133,3 @@ class ElecGraph(Graph):
 
         print('graph builded.')
         return dgl.from_networkx(G)
-
-    def build_feat(self, embed_dim, hid_dim, feat_dim, 
-                    k, epochs):
-        try:
-            feat = torch.load('./embedding/elec_feat.pt')
-            print('features loaded.')
-            return feat
-        except:
-            print('trainging elec features ...')
-            embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
-            self.graph.ndata['feat'] = embedding.weight
-
-            gcn = GCN(embed_dim, hid_dim, feat_dim)
-            optimizer = torch.optim.Adam(gcn.parameters())
-            optimizer.zero_grad()
-
-            for epoch in range(epochs):
-                t = time.time()
-                negative_graph = construct_negative_graph(self.graph, k)
-                pos_score, neg_score = gcn(self.graph, negative_graph, self.graph.ndata['feat'])
-                loss = compute_loss(pos_score, neg_score)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
-                            " time=", "{:.5f}s".format(time.time() - t)
-                            )
-
-            feat = gcn.sage(self.graph, self.graph.ndata['feat'])
-            try:
-                torch.save(feat, '../embedding/elec_feat.pt')
-                print("saving features sucess")
-            except:
-                print("saving features failed")
-            return feat
-
