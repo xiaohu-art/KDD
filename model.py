@@ -726,7 +726,6 @@ class DQN(nn.Module):
     def choose_node(self, features, state, choosen, exist):
 
         node_num = features.shape[0]
-        features = features.to(device)
         if np.random.uniform() < self.epsilon:
             outputs = self.enet(features).to(device)
             s_mat = torch.tile(state, (node_num, 1)).to(device)

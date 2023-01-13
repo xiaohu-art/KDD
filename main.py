@@ -70,8 +70,9 @@ if __name__ == "__main__":
                 gamma=GAMMA)
     if args.feat == "ptr":
         features = egraph.feat.detach()
+        features = features.to(device)
     elif args.feat == "rdn":
-        features = torch.rand(egraph.node_num, EMBED_DIM)
+        features = torch.rand(egraph.node_num, EMBED_DIM).to(device)
 
     initial_power = elec_env.ruin([])
     limit = initial_power * 0.2
