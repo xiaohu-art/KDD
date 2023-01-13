@@ -10,18 +10,18 @@ from colorama import Fore,Back,Style
 
 init()
 
-# parser = argparse.ArgumentParser(description='degree attack')
+parser = argparse.ArgumentParser(description='elec attack')
 
-# parser.add_argument('--epoch', type=int, default=10000, help='Times to train')
-# parser.add_argument('--batch', type=int, default=20, help='Data number used to train')
-# parser.add_argument('--gamma', type=float, default=0.9, help='Related to further reward')
-# parser.add_argument('--lr', type=float, default=0.01, help='Laerning rate')
-# parser.add_argument('--epsilon', type=float, default=0.6, help='Epsilon greedy policy')
-# parser.add_argument('--layer', type=int, default=3, help='GNN embedding layers')
+parser.add_argument('--epoch', type=int, default=1000, help='Times to train')
+parser.add_argument('--batch', type=int, default=20, help='Data number used to train')
+parser.add_argument('--gamma', type=float, default=0.9, help='Related to further reward')
+parser.add_argument('--lr', type=float, default=0.01, help='Laerning rate')
+parser.add_argument('--epsilon', type=float, default=0.6, help='Epsilon greedy policy')
+parser.add_argument('--feat', type=str, required=True, help='pre-train feat or random feat')
 
-# args = parser.parse_args()
+args = parser.parse_args()
 
-EFILE = './data/electricity/elec_flow_input.json'
+EFILE = './data/electricity/all_dict_correct.json'
 TFILE = './data/road/road_junc_map.json'
 ept = './embedding/elec_feat.pt'
 tpt = './embedding/tra_feat.pt'
@@ -29,11 +29,11 @@ EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
 KHOP=5
-EPOCH = 500
-LR = 0.01
-BATCH_SIZE = 20
-GAMMA = 0.9
-EPSILON = 0.6
+EPOCH = args.epoch
+LR = args.lr
+BATCH_SIZE = args.batch
+GAMMA = args.gamma
+EPSILON = args.epsilon
 MEMORY_CAPACITY = 1000
 TARGET_REPLACE_ITER = 25
 
@@ -66,8 +66,11 @@ if __name__ == "__main__":
                 lr=LR,
                 epsilon=EPSILON,
                 gamma=GAMMA)
+    if args.feat == "pretrain":
+        features = egraph.feat.detach()
+    else:
+        features = torch.rand(egraph.node_num, EMBED_DIM)
 
-    features = egraph.feat.detach()
     initial_power = elec_env.ruin([])
     limit = initial_power * 0.2
 
@@ -80,15 +83,18 @@ if __name__ == "__main__":
         state = torch.sum(features, dim=0) / num
         total_reward = 0
         choosen = []
-        # exist = list(range(num))
         exist = [node for node,id in egraph.node_list.items() if id//100000000 > 2]
         elec_env.reset()
 
         done = False
+        result = []
 
         while not done:
             hpower = elec_env.ruin([])
             node = agent.choose_node(features, state, choosen, exist)
+            if egraph.node_list[node]// 100000000 < 3:
+                continue
+
             choosen.append(node)
             exist.remove(node)
             num -= 1
@@ -101,18 +107,20 @@ if __name__ == "__main__":
 
             agent.store_transition(state.data.cpu().numpy(),
                                     node, reward,
-                                   _state.data.cpu().numpy(),)
+                                   _state.data.cpu().numpy())
                         
             if agent.memory_num > agent.mem_cap:
                 agent.learn(features)
 
             state = _state
 
-            # if tpower < limit:
-            if len(choosen) == 10:
+            if len(choosen) == 100:
                 done = True
+                result.append([epoch, total_reward])
                 print(Fore.RED,Back.YELLOW)
                 print("\nEpoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),
-                        " node num =", "%04d" % (egraph.node_num - num)
+                        " time =", "{:.4f}".format(time.time() - t)
                         )
                 print(Style.RESET_ALL)
+
+            torch.save(agent.enet.state_dict(), 'elec.pt')
