@@ -700,11 +700,19 @@ class Net(nn.Module):
 class DQN(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim, 
                 memory_capacity, iter, batch_size,
-                lr, epsilon, gamma):
+                lr, epsilon, gamma,
+                label, model_pt):
         super().__init__()
 
         self.embed_dim = in_dim
-        self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+        if label == 'train':
+            self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+        elif label == 'test':
+            self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+            self.enet.load_state_dict(torch.load(model_pt))
+        else:
+            pass
+        
         self.tnet = Net(in_dim, hid_dim, out_dim).to(device)
         self.learning_step = 0
         self.memory_num = 0
@@ -738,6 +746,19 @@ class DQN(nn.Module):
             node = random.sample(exist, 1)[0]
         
         return node
+
+    def attack(self, features, state, choosen):
+
+        node_num = features.shape[0]
+        outputs = self.enet(features).to(device)
+        s_mat = torch.tile(state, (node_num, 1)).to(device)
+        Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
+        Q_cp = Q_values.data.cpu().numpy()
+        Q_cp[choosen] = 0
+        node = int(np.argmax(Q_cp)) 
+
+        return node
+
 
     def store_transition(self, s, a, r, s_):
 
