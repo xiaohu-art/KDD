@@ -1,5 +1,5 @@
 from model import ElecGraph, TraGraph, DQN
-from utils import init_env
+from utils import init_env, calculate_anc
 
 import time
 import torch
@@ -71,16 +71,13 @@ if __name__ == "__main__":
                 epsilon=EPSILON,
                 gamma=GAMMA,
                 label=args.label,
-                model_pt='./elec_ptr.pt')
+                model_pt='./tra_ptr.pt')
 
     if args.feat == "ptr":
-        features = egraph.feat.detach()
+        features = tgraph.feat.detach()
         features = features.to(device)
     elif args.feat == "rdn":
-        features = torch.rand(egraph.node_num, EMBED_DIM).to(device)
-
-    initial_power = elec_env.ruin([])
-    limit = initial_power * 0.2
+        features = torch.rand(tgraph.node_num, EMBED_DIM).to(device)
 
     print()
     print(Fore.RED,Back.YELLOW,'begin attacking ...')
@@ -89,74 +86,72 @@ if __name__ == "__main__":
     if args.label == 'test':
         
         t = time.time()
-        num = egraph.node_num
+        num = tgraph.node_num
         state = torch.sum(features, dim=0) / num
         choosen = []
-        elec_env.reset()
 
         result = []
 
         done = False
         while not done:
             node = agent.attack(features, state, choosen)
-            if egraph.node_list[node]// 100000000 < 3:
-                continue
 
             choosen.append(node)
             num -= 1
 
-            current_power = elec_env.ruin([egraph.node_list[node]])
+            ANC = 0
             _state = (state * (num+1) - features[node]) / num
 
-            result.append([len(choosen), current_power])
+            result.append([len(choosen), ANC])
 
             if len(choosen) == 20:
                 done = True
         
         result = np.array(result)
-        np.savetxt('result_'+args.feat+'.txt', result)
+        np.savetxt('tra_result_'+args.feat+'.txt', result)
 
 
     elif args.label == 'train':
 
+        tmp_g = tgraph.build_graph(TFILE)[1]
+
         for epoch in range(EPOCH):
 
             t = time.time()
-            num = egraph.node_num
+            num = tgraph.node_num
             state = torch.sum(features, dim=0) / num
             total_reward = 0
             choosen = []
-            exist = [node for node,id in egraph.node_list.items() if id//100000000 > 2]
-            elec_env.reset()
+            exist = list(range(num))
 
+            g_copy = tmp_g.copy()
+            
             done = False
             result = []
 
             while not done:
-                hpower = elec_env.ruin([])
+                hanc = calculate_anc(choosen, g_copy)
                 node = agent.choose_node(features, state, choosen, exist)
-                if egraph.node_list[node]// 100000000 < 3:
-                    continue
 
                 choosen.append(node)
                 exist.remove(node)
                 num -= 1
 
-                tpower = elec_env.ruin([egraph.node_list[node]])
+                tanc = calculate_anc(choosen, g_copy)
                 _state = (state * (num+1) - features[node]) / num
 
-                reward = (hpower - tpower) / 1e05
+                reward = hanc - tanc
                 total_reward += reward
 
                 agent.store_transition(state.data.cpu().numpy(),
                                         node, reward,
                                     _state.data.cpu().numpy())
-                            
+                
                 if agent.memory_num > agent.mem_cap:
+                    
                     agent.learn(features)
 
                 state = _state
-
                 if len(choosen) == 100:
                     done = True
                     result.append([epoch, total_reward])
@@ -166,4 +161,99 @@ if __name__ == "__main__":
                             )
                     print(Style.RESET_ALL)
 
-        torch.save(agent.enet.state_dict(), 'elec_'+args.feat+'.pt')
+        torch.save(agent.enet.state_dict(), 'tra_'+args.feat+'.pt')
+
+    # if args.feat == "ptr":
+    #     features = egraph.feat.detach()
+    #     features = features.to(device)
+    # elif args.feat == "rdn":
+    #     features = torch.rand(egraph.node_num, EMBED_DIM).to(device)
+
+    # initial_power = elec_env.ruin([])
+    # limit = initial_power * 0.2
+
+    # print()
+    # print(Fore.RED,Back.YELLOW,'begin attacking ...')
+    # print(Style.RESET_ALL)
+
+    # if args.label == 'test':
+        
+    #     t = time.time()
+    #     num = egraph.node_num
+    #     state = torch.sum(features, dim=0) / num
+    #     choosen = []
+    #     elec_env.reset()
+
+    #     result = []
+
+    #     done = False
+    #     while not done:
+    #         node = agent.attack(features, state, choosen)
+    #         if egraph.node_list[node]// 100000000 < 3:
+    #             continue
+
+    #         choosen.append(node)
+    #         num -= 1
+
+    #         current_power = elec_env.ruin([egraph.node_list[node]])
+    #         _state = (state * (num+1) - features[node]) / num
+
+    #         result.append([len(choosen), current_power])
+
+    #         if len(choosen) == 20:
+    #             done = True
+        
+    #     result = np.array(result)
+    #     np.savetxt('result_'+args.feat+'.txt', result)
+
+
+    # elif args.label == 'train':
+
+    #     for epoch in range(EPOCH):
+
+    #         t = time.time()
+    #         num = egraph.node_num
+    #         state = torch.sum(features, dim=0) / num
+    #         total_reward = 0
+    #         choosen = []
+    #         exist = [node for node,id in egraph.node_list.items() if id//100000000 > 2]
+    #         elec_env.reset()
+
+    #         done = False
+    #         result = []
+
+    #         while not done:
+    #             hpower = elec_env.ruin([])
+    #             node = agent.choose_node(features, state, choosen, exist)
+    #             if egraph.node_list[node]// 100000000 < 3:
+    #                 continue
+
+    #             choosen.append(node)
+    #             exist.remove(node)
+    #             num -= 1
+
+    #             tpower = elec_env.ruin([egraph.node_list[node]])
+    #             _state = (state * (num+1) - features[node]) / num
+
+    #             reward = (hpower - tpower) / 1e05
+    #             total_reward += reward
+
+    #             agent.store_transition(state.data.cpu().numpy(),
+    #                                     node, reward,
+    #                                 _state.data.cpu().numpy())
+                            
+    #             if agent.memory_num > agent.mem_cap:
+    #                 agent.learn(features)
+
+    #             state = _state
+
+    #             if len(choosen) == 100:
+    #                 done = True
+    #                 result.append([epoch, total_reward])
+    #                 print(Fore.RED,Back.YELLOW)
+    #                 print("\nEpoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),
+    #                         " time =", "{:.4f}".format(time.time() - t)
+    #                         )
+    #                 print(Style.RESET_ALL)
+
+    #     torch.save(agent.enet.state_dict(), 'elec_'+args.feat+'.pt')

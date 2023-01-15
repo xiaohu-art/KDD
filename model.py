@@ -144,7 +144,7 @@ class TraGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
         print('traffice network constrcution!')
-        self.graph = self.build_graph(file)
+        self.node_list, _, self.graph = self.build_graph(file)
         try:
             feat = torch.load(pt_path)
             print('traffic features loaded.')
@@ -165,7 +165,7 @@ class TraGraph(Graph):
                 G.add_edge(junc[0], junc[1], id=int(road))
 
         node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
-        return node_list, dgl.from_networkx(G)
+        return node_list, G, dgl.from_networkx(G)
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")
