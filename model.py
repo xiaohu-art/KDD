@@ -353,9 +353,10 @@ class Bigraph(Graph):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
-                                " time=", "{:.4f}s".format(time.time() - t)
-                                )
+            if epoch % 20 == 0:
+                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                                    " time=", "{:.4f}s".format(time.time() - t)
+                                    )
 
         feat = hgcn.layer(hetero_graph, bifeatures)
         try:
