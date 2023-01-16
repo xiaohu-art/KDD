@@ -116,7 +116,7 @@ class Graph():
 class ElecGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
-        print('electricity network construction!')
+        print('Electricity network construction!')
         print(Style.RESET_ALL)
         self.node_list, self.nxgraph,self.graph = self.build_graph(file)
         self.degree = dict(nx.degree(self.nxgraph))
@@ -124,7 +124,7 @@ class ElecGraph(Graph):
         
         try:
             feat = torch.load(pt_path)
-            print('elec features loaded.')
+            print('Elec features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
@@ -163,12 +163,12 @@ class ElecGraph(Graph):
 class TraGraph(Graph):
     def __init__(self, file1, file2, file3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
-        print('traffice network construction!')
+        print('Traffice network construction!')
         print(Style.RESET_ALL)
         self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
         try:
             feat = torch.load(pt_path)
-            print('traffic features loaded.')
+            print('Traffic features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
@@ -187,11 +187,62 @@ class TraGraph(Graph):
             tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
             if len(junc) == 2 and road_type[road] == 'tertiary':
-                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])])
 
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('traffic graph builded.')
         return node_list, graph, dgl.from_networkx(graph)
+
+class Bigraph(Graph):
+    def __init__(self, efile, tfile1, tfile2, tfile3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+        print(Fore.RED,Back.YELLOW)
+        print('Bigraph network construction!')
+        print(Style.RESET_ALL)
+        self.node_list, self.nxgraph, self.graph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        try:
+            feat = torch.load(pt_path)
+            print('Bigraph features loaded.')
+            self.feat = feat
+        except:
+            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
+                                         khop, epochs,
+                                         pt_path)
+    
+    def build_graph(self, efile, tfile1, tfile2, tfile3):
+
+        print('building bigraph ...')
+        graph = nx.Graph()
+        with open(tfile1, 'r') as f:
+            data = json.load(f)
+        with open(tfile2, 'r') as f:
+            road_type = json.load(f)
+        with open(tfile3, 'r') as f:
+            tl_id_road2elec_map = json.load(f)
+        for road, junc in data.items():
+            if len(junc) == 2 and road_type[road] == 'tertiary':
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], etype=1)
+
+        with open(efile, 'r') as f:
+            data = json.load(f)
+        for key,facility in data.items():
+            for node_id in facility.keys():
+                node = facility[node_id]
+                for neighbor in node['relation']:
+                    if int(node_id)<6e8 and (neighbor<6e8) :
+                        graph.add_edge(int(node_id),neighbor, etype=0)
+
+        for tl_id,value in data['tl'].items():
+            if int(tl_id) in list(graph.nodes()):
+                for neighbor in value['relation']:
+                    graph.add_edge(int(tl_id),neighbor, etype=2)
+
+        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
+        print('bigraph builded.')
+        return node_list, graph, dgl.from_networkx(graph)
+    
+    # def build_feat(self, embed_dim, hid_dim, feat_dim, k, epochs, pt_path):
+    #     return
+
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")

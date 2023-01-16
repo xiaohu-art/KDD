@@ -34,9 +34,9 @@ def init_env():
     
     return elec
 
-def calculate_pairwise_connectivity(removal_nodes,graph):
+def calculate_pairwise_connectivity(removal_nodes,Graph):
 
-    # graph = Graph.copy()
+    graph = Graph.copy()
     graph.remove_nodes_from(removal_nodes)
     size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
     element_of_pc  = [size*(size - 1)/2 for size in size_of_connected_components] 
@@ -44,9 +44,9 @@ def calculate_pairwise_connectivity(removal_nodes,graph):
 
     return pairwise_connectivity
 
-def calculate_size_of_gcc(removal_nodes,graph):
+def calculate_size_of_gcc(removal_nodes,Graph):
 
-    # graph = Graph.copy()
+    graph = Graph.copy()
     graph.remove_nodes_from(removal_nodes)
     size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
     size_of_gcc = max(size_of_connected_components)

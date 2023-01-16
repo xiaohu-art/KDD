@@ -1,5 +1,5 @@
 from model import ElecGraph, TraGraph, DQN
-from utils import init_env, calculate_anc
+from utils import init_env
 
 import time
 import torch
@@ -60,14 +60,8 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
-
+    
     elec_env = init_env()
-    
-    egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
-    degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
-    
-    egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
-    CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:20]
 
     agent = DQN(in_dim=EMBED_DIM,
                 hid_dim=HID_DIM,
@@ -126,6 +120,10 @@ if __name__ == "__main__":
         print(Style.RESET_ALL)
         np.savetxt('./results/elec_result_'+args.feat+'.txt', result)
 
+        # degree attack
+        egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
+        degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
+    
         elec_env.reset()
         result = []
 
@@ -138,6 +136,10 @@ if __name__ == "__main__":
         print(Style.RESET_ALL)
         np.savetxt('./results/elec_degree.txt', result)
         
+        # CI attack
+        egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
+        CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:20]
+
         elec_env.reset()
         result = []
 
