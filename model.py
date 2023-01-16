@@ -156,10 +156,10 @@ class ElecGraph(Graph):
         return CI
 
 class TraGraph(Graph):
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
-        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
+    def __init__(self, file1, file2, file3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+        super().__init__(file1, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
         print('traffice network constrcution!')
-        self.node_list, self.nxgraph, self.graph = self.build_graph(file)
+        self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
         try:
             feat = torch.load(pt_path)
             print('traffic features loaded.')
@@ -169,18 +169,22 @@ class TraGraph(Graph):
                                          khop, epochs,
                                          pt_path)
 
-    def build_graph(self, file):
+    def build_graph(self, file1, file2, file3):
 
         print('building traffic graph ...')
-        with open(file, 'r') as f:
+        graph = nx.Graph()
+        with open(file1, 'r') as f:
             data = json.load(f)
-        G = nx.Graph()
+        with open(file2, 'r') as f:
+            road_type = json.load(f)
+        with open(file3, 'r') as f:
+            tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
-            if len(junc) == 2:
-                G.add_edge(junc[0], junc[1], id=int(road))
+            if len(junc) == 2 and road_type[road] == 'tertiary':
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
 
-        node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
-        return node_list, G, dgl.from_networkx(G)
+        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
+        return node_list, graph, dgl.from_networkx(graph)
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")

@@ -24,7 +24,9 @@ parser.add_argument('--label', type=str, required=True, help='train or test')
 args = parser.parse_args()
 
 EFILE = './data/electricity/all_dict_correct.json'
-TFILE = './data/road/road_junc_map.json'
+TFILE1 = './data/road/road_junc_map.json'
+TFILE2 = './data/road/road_type_map.json'
+TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
 tpt = './embedding/tra_feat.pt'
 EMBED_DIM = 64
@@ -51,13 +53,15 @@ if __name__ == "__main__":
                     epochs=500,
                     pt_path=ept)
 
-    tgraph = TraGraph(file=TFILE,
+    tgraph = TraGraph(file1=TFILE1, file2=TFILE2, file3=TFILE3,
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
+
+    exit()
 
     elec_env = init_env()
     
