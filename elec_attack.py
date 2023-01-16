@@ -193,10 +193,10 @@ if __name__ == "__main__":
                 if len(choosen) == 100:
                     done = True
                     result.append([epoch, total_reward])
-                    print(Fore.RED,Back.YELLOW)
-                    print("\nEpoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),
+                    
+                    print("Epoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),
                             " time =", "{:.4f}".format(time.time() - t)
                             )
-                    print(Style.RESET_ALL)
+                    
 
         torch.save(agent.enet.state_dict(), 'elec_'+args.feat+'.pt')

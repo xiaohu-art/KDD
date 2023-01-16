@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import scipy.sparse as sp
 import networkx as nx
 import numpy as np
 import random
@@ -15,6 +13,11 @@ import math
 from pyproj import Geod
 from shapely.geometry import Point, LineString
 from pypower.api import ppoption, runpf
+
+from colorama import init
+from colorama import Fore,Back,Style
+
+init()
 
 
 class SAGE(nn.Module):
@@ -61,7 +64,7 @@ def compute_loss(pos_score, neg_score):
         return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
 
 class Graph():
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+    def __init__(self):
         self.graph = None
         self.feat = None
         self.node_list = None
@@ -112,8 +115,9 @@ class Graph():
 
 class ElecGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
-        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
+        print(Fore.RED,Back.YELLOW)
         print('electricity network construction!')
+        print(Style.RESET_ALL)
         self.node_list, self.nxgraph,self.graph = self.build_graph(file)
         self.degree = dict(nx.degree(self.nxgraph))
         self.CI = self.build_CI()
@@ -141,7 +145,7 @@ class ElecGraph(Graph):
                         elec_graph.add_edge(int(node_id),neighbor)
 
         node_list : dict = {i:j for i,j in enumerate(list(elec_graph.nodes()))}
-        print('graph builded.')
+        print('electric graph builded.')
         return node_list, elec_graph, dgl.from_networkx(elec_graph)
 
     def build_CI(self):
@@ -158,8 +162,9 @@ class ElecGraph(Graph):
 
 class TraGraph(Graph):
     def __init__(self, file1, file2, file3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
-        super().__init__(file1, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
-        print('traffice network constrcution!')
+        print(Fore.RED,Back.YELLOW)
+        print('traffice network construction!')
+        print(Style.RESET_ALL)
         self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
         try:
             feat = torch.load(pt_path)
@@ -185,6 +190,7 @@ class TraGraph(Graph):
                 graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
 
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
+        print('traffic graph builded.')
         return node_list, graph, dgl.from_networkx(graph)
 
 BASE = 100000000
