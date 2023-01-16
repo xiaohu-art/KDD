@@ -81,7 +81,7 @@ class Graph():
                     k, epochs,
                     pt_path):
 
-        print('trainging features ...')
+        print('training features ...')
         embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
         self.graph.ndata['feat'] = embedding.weight
 
@@ -97,9 +97,10 @@ class Graph():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
-                        " time=", "{:.4f}s".format(time.time() - t)
-                        )
+            if epoch % 20 == 0:
+                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                            " time=", "{:.4f}s".format(time.time() - t)
+                            )
 
         feat = gcn.sage(self.graph, self.graph.ndata['feat'])
         try:

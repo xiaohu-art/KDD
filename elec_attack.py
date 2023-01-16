@@ -61,8 +61,6 @@ if __name__ == "__main__":
                     epochs=300,
                     pt_path=tpt)
 
-    exit()
-
     elec_env = init_env()
     
     egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
