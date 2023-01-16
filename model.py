@@ -17,6 +17,8 @@ from pypower.api import ppoption, runpf
 from colorama import init
 from colorama import Fore,Back,Style
 
+from utils import numbers_to_etypes, compute_loss, construct_negative_graph
+
 init()
 
 device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
@@ -86,39 +88,6 @@ class HeteroGCN(nn.Module):
     def forward(self, graph, neg_graph, feat, etype):
         feat = self.layer(graph, feat)
         return self.pred(graph, feat, etype), self.pred(neg_graph, feat, etype)
-
-def construct_negative_graph(graph, k):
-    src, dst = graph.edges()
-
-    neg_src = src.repeat_interleave(k)
-    neg_dst = torch.randint(0, graph.num_nodes(), (len(src) * k,))
-    return dgl.graph((neg_src, neg_dst), num_nodes=graph.num_nodes())
-
-def construct_negative_graph(graph, k, etype):
-    utype, _, vtype = etype
-    src, dst = graph.edges(etype=etype)
-    neg_src = src.repeat_interleave(k)
-    neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
-    return dgl.heterograph(
-        {etype: (neg_src, neg_dst)},
-        num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
-
-def compute_loss(pos_score, neg_score):
-        n_edges = pos_score.shape[0]
-
-        return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
-
-def numbers_to_etypes(num):
-            switcher = {
-                0: ('power', 'elec', 'power'),
-                1: ('power', 'eleced-by', 'power'),
-                2: ('junc', 'tran', 'junc'),
-                3: ('junc', 'traned-by', 'junc'),
-                4: ('junc', 'supp', 'power'),
-                5: ('power', 'suppd-by', 'junc'),
-            }
-
-            return switcher.get(num, "wrong!")
 
 class Graph():
     def __init__(self):
@@ -371,15 +340,6 @@ class Bigraph(Graph):
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")
-
-def str2int(json_data):
-    """
-    将json的“键”由string转为int
-    """
-    new_dict = {}
-    for key, value in json_data.items():
-        new_dict[int(key)] = value
-    return new_dict
 
 class ElecNoStep:
     def __init__(self, config, topology, power_10kv, power_load):
