@@ -29,7 +29,7 @@ TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
 tpt = './embedding/tra_feat.pt'
-bpt = './embedding/bi_feat.pt'
+bpt = ('./embedding/bifeatures/bi_elec_feat.pt', './embedding/bifeatures/bi_tra_feat.pt') 
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -46,10 +46,30 @@ device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
 if __name__ == "__main__":
 
-    bigraph = Bigraph(efile=EFILE, tfile1=TFILE1, tfile2=TFILE2, tfile3=TFILE3,
+    egraph = ElecGraph(file=EFILE,
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
                     khop=KHOP,
                     epochs=500,
+                    pt_path=ept)
+
+    tgraph = TraGraph(file1=TFILE1, file2=TFILE2, file3=TFILE3,
+                    embed_dim=EMBED_DIM,
+                    hid_dim=HID_DIM,
+                    feat_dim=FEAT_DIM,
+                    khop=KHOP,
+                    epochs=300,
+                    pt_path=tpt)
+
+    bigraph = Bigraph(efile=EFILE, tfile1=TFILE1, tfile2=TFILE2, tfile3=TFILE3,
+                    embed_dim=EMBED_DIM,
+                    hid_dim=HID_DIM,
+                    feat_dim=FEAT_DIM,
+                    subgraph = (egraph, tgraph),
+                    khop=KHOP,
+                    epochs=600,
                     pt_path=bpt)
+
+    print(bigraph.feat['junc'].shape)
+    print(bigraph.feat['power'].shape)

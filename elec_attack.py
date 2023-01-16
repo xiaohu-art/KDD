@@ -41,7 +41,7 @@ EPSILON = args.epsilon
 MEMORY_CAPACITY = 1000
 TARGET_REPLACE_ITER = 25
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
 
 if __name__ == "__main__":
 

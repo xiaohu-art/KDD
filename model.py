@@ -19,6 +19,7 @@ from colorama import Fore,Back,Style
 
 init()
 
+device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -34,12 +35,37 @@ class SAGE(nn.Module):
 
         return output
 
+class RGCN(nn.Module):
+    def __init__(self, in_dim, hid_dim, out_dim, rel_names):
+        super().__init__()
+        self.conv1 = dnn.HeteroGraphConv({
+            rel: dnn.GraphConv(in_dim, hid_dim)
+            for rel in rel_names}, aggregate='sum')
+        self.conv2 = dnn.HeteroGraphConv({
+            rel: dnn.GraphConv(hid_dim, out_dim)
+            for rel in rel_names}, aggregate='sum')
+
+        self.relu = nn.ReLU()
+
+    def forward(self, graph, input):
+        output = self.conv1(graph, input)
+        output = {k: self.relu(v) for k, v in output.items()}
+        output = self.conv2(graph, output)
+        return output
+
 class Innerproduct(nn.Module):
     def forward(self, graph, feat):
         with graph.local_scope():
             graph.ndata['feat'] = feat
             graph.apply_edges(dfn.u_dot_v('feat', 'feat', 'score'))
             return graph.edata['score']
+
+class HeteroInnerProduct(nn.Module):
+    def forward(self, graph, feat, etype):
+        with graph.local_scope():
+            graph.ndata['feat'] = feat
+            graph.apply_edges(dfn.u_dot_v('feat', 'feat', 'score'))
+            return graph.edges[etype].data['score']
 
 class GCN(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -51,6 +77,16 @@ class GCN(nn.Module):
         feat = self.sage(graph, feat)
         return self.pred(graph, feat), self.pred(neg_graph, feat)
 
+class HeteroGCN(nn.Module):
+    def __init__(self, in_dim, hid_dim, out_dim, rel_names):
+        super().__init__()
+        self.layer = RGCN(in_dim, hid_dim, out_dim, rel_names)
+        self.pred = HeteroInnerProduct()
+
+    def forward(self, graph, neg_graph, feat, etype):
+        feat = self.layer(graph, feat)
+        return self.pred(graph, feat, etype), self.pred(neg_graph, feat, etype)
+
 def construct_negative_graph(graph, k):
     src, dst = graph.edges()
 
@@ -58,10 +94,31 @@ def construct_negative_graph(graph, k):
     neg_dst = torch.randint(0, graph.num_nodes(), (len(src) * k,))
     return dgl.graph((neg_src, neg_dst), num_nodes=graph.num_nodes())
 
+def construct_negative_graph(graph, k, etype):
+    utype, _, vtype = etype
+    src, dst = graph.edges(etype=etype)
+    neg_src = src.repeat_interleave(k)
+    neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
+    return dgl.heterograph(
+        {etype: (neg_src, neg_dst)},
+        num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
+
 def compute_loss(pos_score, neg_score):
         n_edges = pos_score.shape[0]
 
         return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
+
+def numbers_to_etypes(num):
+            switcher = {
+                0: ('power', 'elec', 'power'),
+                1: ('power', 'eleced-by', 'power'),
+                2: ('junc', 'tran', 'junc'),
+                3: ('junc', 'traned-by', 'junc'),
+                4: ('junc', 'supp', 'power'),
+                5: ('power', 'suppd-by', 'junc'),
+            }
+
+            return switcher.get(num, "wrong!")
 
 class Graph():
     def __init__(self):
@@ -194,23 +251,30 @@ class TraGraph(Graph):
         return node_list, graph, dgl.from_networkx(graph)
 
 class Bigraph(Graph):
-    def __init__(self, efile, tfile1, tfile2, tfile3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+    def __init__(self, efile, tfile1, tfile2, tfile3, 
+                    embed_dim, hid_dim, feat_dim, 
+                    subgraph,
+                    khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
         print('Bigraph network construction!')
         print(Style.RESET_ALL)
-        self.node_list, self.nxgraph, self.graph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        self.node_list, self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
         try:
-            feat = torch.load(pt_path)
+            feat = {}
+            feat['power'] = torch.load(pt_path[0])
+            feat['junc'] = torch.load(pt_path[1])
             print('Bigraph features loaded.')
             self.feat = feat
         except:
-            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
-                                         khop, epochs,
-                                         pt_path)
+            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim,
+                                            subgraph,
+                                            khop, epochs,
+                                            pt_path)
     
     def build_graph(self, efile, tfile1, tfile2, tfile3):
 
         print('building bigraph ...')
+    
         graph = nx.Graph()
         with open(tfile1, 'r') as f:
             data = json.load(f)
@@ -220,7 +284,7 @@ class Bigraph(Graph):
             tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
             if len(junc) == 2 and road_type[road] == 'tertiary':
-                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], etype=1)
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
 
         with open(efile, 'r') as f:
             data = json.load(f)
@@ -229,19 +293,79 @@ class Bigraph(Graph):
                 node = facility[node_id]
                 for neighbor in node['relation']:
                     if int(node_id)<6e8 and (neighbor<6e8) :
-                        graph.add_edge(int(node_id),neighbor, etype=0)
-
+                        graph.add_edge(int(node_id),neighbor)
         for tl_id,value in data['tl'].items():
             if int(tl_id) in list(graph.nodes()):
                 for neighbor in value['relation']:
-                    graph.add_edge(int(tl_id),neighbor, etype=2)
+                    graph.add_edge(neighbor, int(tl_id))
 
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('bigraph builded.')
-        return node_list, graph, dgl.from_networkx(graph)
+        return node_list, graph
     
-    # def build_feat(self, embed_dim, hid_dim, feat_dim, k, epochs, pt_path):
-    #     return
+    def build_feat(self, embed_dim, hid_dim, feat_dim, subgraph, k, epochs, pt_path):
+        egraph, tgraph = subgraph
+        n_power = egraph.node_num
+        n_junc  = tgraph.node_num
+        power_idx = {v:k for k, v in egraph.node_list.items()}
+        junc_idx  = {v:k for k, v in tgraph.node_list.items()}
+
+        edge_list = self.nxgraph.edges()
+        elec_edge = [(u, v) for (u, v) in edge_list if u < 6e8 and v < 6e8]
+        tran_edge = [(u, v) for (u, v) in edge_list if u > 6e8 and v > 6e8]
+        supp_edge = [(u, v) for (u, v) in edge_list 
+                                if (u, v) not in elec_edge and (u, v) not in tran_edge]
+
+        elec_src, elec_dst = np.array([power_idx[u] for (u, _) in elec_edge]), np.array([power_idx[v] for (_, v) in elec_edge])
+        tran_src, tran_dst = np.array([junc_idx[u] for (u, _) in tran_edge]), np.array([junc_idx[v] for (_, v) in tran_edge])
+        supp_src, supp_dst = np.array([junc_idx[u] for (u, _) in supp_edge]), np.array([power_idx[v] for (_, v) in supp_edge])
+        
+        hetero_graph = dgl.heterograph({
+                    ('power', 'elec', 'power'): (elec_src, elec_dst),
+                    ('power', 'eleced-by', 'power'): (elec_dst, elec_src),
+                    ('junc', 'tran', 'junc'): (tran_src, tran_dst),
+                    ('junc', 'traned-by', 'junc'): (tran_dst, tran_src),
+                    ('junc', 'supp', 'power'): (supp_src, supp_dst),
+                    ('power', 'suppd-by', 'junc'): (supp_dst, supp_src)
+                    })
+
+        hetero_graph.nodes['power'].data['feature'] = torch.nn.Embedding(n_power, embed_dim, max_norm=1).weight
+        hetero_graph.nodes['junc'].data['feature'] = torch.nn.Embedding(n_junc, embed_dim, max_norm=1).weight
+        
+        hgcn = HeteroGCN(embed_dim, hid_dim, feat_dim, hetero_graph.etypes)
+
+        bifeatures = {
+                'junc' :hetero_graph.nodes['junc'].data['feature'],
+                'power':hetero_graph.nodes['power'].data['feature']
+        }
+
+        optimizer = torch.optim.Adam(hgcn.parameters())
+        print('training features ...')
+        for epoch in range(epochs):
+
+            num = epoch % 6
+            etype = numbers_to_etypes(num)
+
+            t = time.time()
+            negative_graph = construct_negative_graph(hetero_graph, k, etype)
+            pos_score, neg_score = hgcn(hetero_graph, negative_graph, bifeatures, etype)
+            loss = compute_loss(pos_score, neg_score)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                                " time=", "{:.4f}s".format(time.time() - t)
+                                )
+
+        feat = hgcn.layer(hetero_graph, bifeatures)
+        try:
+            torch.save(feat['power'], pt_path[0])
+            torch.save(feat['junc'], pt_path[1])
+            print("saving features sucess")
+        except:
+            print("saving features failed")
+
+        return feat
 
 
 BASE = 100000000
@@ -757,8 +881,6 @@ class ElecNoStep:
 
         return np.array(Bus_data), np.array(Generator_data), np.array(Branch_data)
 
-
-device = torch.device('cuda:1' if torch.cuda.is_available() else 'cpu')
 
 class Net(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
