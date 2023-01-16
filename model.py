@@ -113,7 +113,10 @@ class ElecGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
         print('electricity network construction!')
-        self.node_list, self.graph = self.build_graph(file)
+        self.node_list, self.nxgraph,self.graph = self.build_graph(file)
+        self.degree = dict(nx.degree(self.nxgraph))
+        self.CI = self.build_CI()
+        
         try:
             feat = torch.load(pt_path)
             print('elec features loaded.')
@@ -138,13 +141,25 @@ class ElecGraph(Graph):
 
         node_list : dict = {i:j for i,j in enumerate(list(elec_graph.nodes()))}
         print('graph builded.')
-        return node_list, dgl.from_networkx(elec_graph)
+        return node_list, elec_graph, dgl.from_networkx(elec_graph)
+
+    def build_CI(self):
+        CI = []
+        d = self.degree
+        for node in d:
+            ci = 0
+            neighbors = list(self.nxgraph.neighbors(node))
+            for neighbor in neighbors:
+                ci += (d[neighbor]-1)
+            CI.append((node,ci*(d[node]-1)))
+        
+        return CI
 
 class TraGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
         super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
         print('traffice network constrcution!')
-        self.node_list, _, self.graph = self.build_graph(file)
+        self.node_list, self.nxgraph, self.graph = self.build_graph(file)
         try:
             feat = torch.load(pt_path)
             print('traffic features loaded.')

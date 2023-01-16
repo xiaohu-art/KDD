@@ -58,8 +58,14 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
-    
+
     elec_env = init_env()
+    
+    egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
+    degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
+    
+    egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
+    CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:20]
 
     agent = DQN(in_dim=EMBED_DIM,
                 hid_dim=HID_DIM,
@@ -87,6 +93,7 @@ if __name__ == "__main__":
 
     if args.label == 'test':
         
+        # AI attack
         t = time.time()
         num = egraph.node_num
         state = torch.sum(features, dim=0) / num
@@ -113,8 +120,33 @@ if __name__ == "__main__":
                 done = True
         
         result = np.array(result)
+        print(Fore.RED,Back.YELLOW,'saving RL attack result ...')
+        print(Style.RESET_ALL)
         np.savetxt('./results/elec_result_'+args.feat+'.txt', result)
 
+        elec_env.reset()
+        result = []
+
+        for id, (node, degree) in enumerate(degree_list):
+            current_power = elec_env.ruin([node])
+            result.append([id+1, current_power])
+
+        result = np.array(result)
+        print(Fore.RED,Back.YELLOW,'saving degree attack result ...')
+        print(Style.RESET_ALL)
+        np.savetxt('./results/elec_degree.txt', result)
+        
+        elec_env.reset()
+        result = []
+
+        for id, (node, CI) in enumerate(CI_list):
+            current_power = elec_env.ruin([node])
+            result.append([id+1, current_power])
+
+        result = np.array(result)
+        print(Fore.RED,Back.YELLOW,'saving CI attack result ...')
+        print(Style.RESET_ALL)
+        np.savetxt('./results/elec_CI.txt', result)
 
     elif args.label == 'train':
 
