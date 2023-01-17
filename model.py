@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import scipy.sparse as sp
 import networkx as nx
 import numpy as np
 import random
@@ -11,13 +9,17 @@ import dgl
 import dgl.nn as dnn
 import dgl.function as dfn
 import copy
-import yaml
 import math
 from pyproj import Geod
 from shapely.geometry import Point, LineString
 from pypower.api import ppoption, runpf
-import os, sys
 
+from colorama import init
+from colorama import Fore,Back,Style
+
+init()
+
+device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -33,12 +35,37 @@ class SAGE(nn.Module):
 
         return output
 
+class RGCN(nn.Module):
+    def __init__(self, in_dim, hid_dim, out_dim, rel_names):
+        super().__init__()
+        self.conv1 = dnn.HeteroGraphConv({
+            rel: dnn.GraphConv(in_dim, hid_dim)
+            for rel in rel_names}, aggregate='sum')
+        self.conv2 = dnn.HeteroGraphConv({
+            rel: dnn.GraphConv(hid_dim, out_dim)
+            for rel in rel_names}, aggregate='sum')
+
+        self.relu = nn.ReLU()
+
+    def forward(self, graph, input):
+        output = self.conv1(graph, input)
+        output = {k: self.relu(v) for k, v in output.items()}
+        output = self.conv2(graph, output)
+        return output
+
 class Innerproduct(nn.Module):
     def forward(self, graph, feat):
         with graph.local_scope():
             graph.ndata['feat'] = feat
             graph.apply_edges(dfn.u_dot_v('feat', 'feat', 'score'))
             return graph.edata['score']
+
+class HeteroInnerProduct(nn.Module):
+    def forward(self, graph, feat, etype):
+        with graph.local_scope():
+            graph.ndata['feat'] = feat
+            graph.apply_edges(dfn.u_dot_v('feat', 'feat', 'score'))
+            return graph.edges[etype].data['score']
 
 class GCN(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -50,6 +77,33 @@ class GCN(nn.Module):
         feat = self.sage(graph, feat)
         return self.pred(graph, feat), self.pred(neg_graph, feat)
 
+class HeteroGCN(nn.Module):
+    def __init__(self, in_dim, hid_dim, out_dim, rel_names):
+        super().__init__()
+        self.layer = RGCN(in_dim, hid_dim, out_dim, rel_names)
+        self.pred = HeteroInnerProduct()
+
+    def forward(self, graph, neg_graph, feat, etype):
+        feat = self.layer(graph, feat)
+        return self.pred(graph, feat, etype), self.pred(neg_graph, feat, etype)
+
+def numbers_to_etypes(num):
+            switcher = {
+                0: ('power', 'elec', 'power'),
+                1: ('power', 'eleced-by', 'power'),
+                2: ('junc', 'tran', 'junc'),
+                3: ('junc', 'traned-by', 'junc'),
+                4: ('junc', 'supp', 'power'),
+                5: ('power', 'suppd-by', 'junc'),
+            }
+
+            return switcher.get(num, "wrong!")
+
+def compute_loss(pos_score, neg_score):
+        n_edges = pos_score.shape[0]
+
+        return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
+
 def construct_negative_graph(graph, k):
     src, dst = graph.edges()
 
@@ -57,13 +111,18 @@ def construct_negative_graph(graph, k):
     neg_dst = torch.randint(0, graph.num_nodes(), (len(src) * k,))
     return dgl.graph((neg_src, neg_dst), num_nodes=graph.num_nodes())
 
-def compute_loss(pos_score, neg_score):
-        n_edges = pos_score.shape[0]
+def construct_negative_graph(graph, k, etype):
+    utype, _, vtype = etype
+    src, dst = graph.edges(etype=etype)
+    neg_src = src.repeat_interleave(k)
+    neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
+    return dgl.heterograph(
+        {etype: (neg_src, neg_dst)},
+        num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
 
-        return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
 
 class Graph():
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+    def __init__(self):
         self.graph = None
         self.feat = None
         self.node_list = None
@@ -83,7 +142,7 @@ class Graph():
                     k, epochs,
                     pt_path):
 
-        print('trainging features ...')
+        print('training features ...')
         embedding = nn.Embedding(self.node_num, embed_dim, max_norm=1)
         self.graph.ndata['feat'] = embedding.weight
 
@@ -99,9 +158,10 @@ class Graph():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
-                        " time=", "{:.4f}s".format(time.time() - t)
-                        )
+            if epoch % 20 == 0:
+                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                            " time=", "{:.4f}s".format(time.time() - t)
+                            )
 
         feat = gcn.sage(self.graph, self.graph.ndata['feat'])
         try:
@@ -113,12 +173,16 @@ class Graph():
 
 class ElecGraph(Graph):
     def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
-        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
-        print('electricity network construction!')
-        self.node_list, self.graph = self.build_graph(file)
+        print(Fore.RED,Back.YELLOW)
+        print('Electricity network construction!')
+        print(Style.RESET_ALL)
+        self.node_list, self.nxgraph,self.graph = self.build_graph(file)
+        self.degree = dict(nx.degree(self.nxgraph))
+        self.CI = self.build_CI()
+        
         try:
             feat = torch.load(pt_path)
-            print('elec features loaded.')
+            print('Elec features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
@@ -139,56 +203,175 @@ class ElecGraph(Graph):
                         elec_graph.add_edge(int(node_id),neighbor)
 
         node_list : dict = {i:j for i,j in enumerate(list(elec_graph.nodes()))}
-        print('graph builded.')
-        return node_list, dgl.from_networkx(elec_graph)
+        print('electric graph builded.')
+        return node_list, elec_graph, dgl.from_networkx(elec_graph)
+
+    def build_CI(self):
+        CI = []
+        d = self.degree
+        for node in d:
+            ci = 0
+            neighbors = list(self.nxgraph.neighbors(node))
+            for neighbor in neighbors:
+                ci += (d[neighbor]-1)
+            CI.append((node,ci*(d[node]-1)))
+        
+        return CI
 
 class TraGraph(Graph):
-    def __init__(self, file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
-        super().__init__(file, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path)
-        print('traffice network constrcution!')
-        self.graph = self.build_graph(file)
+    def __init__(self, file1, file2, file3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+        print(Fore.RED,Back.YELLOW)
+        print('Traffice network construction!')
+        print(Style.RESET_ALL)
+        self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
         try:
             feat = torch.load(pt_path)
-            print('traffic features loaded.')
+            print('Traffic features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim, 
                                          khop, epochs,
                                          pt_path)
 
-    def build_graph(self, file):
+    def build_graph(self, file1, file2, file3):
 
         print('building traffic graph ...')
-        with open(file, 'r') as f:
+        graph = nx.Graph()
+        with open(file1, 'r') as f:
             data = json.load(f)
-        G = nx.Graph()
+        with open(file2, 'r') as f:
+            road_type = json.load(f)
+        with open(file3, 'r') as f:
+            tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
-            if len(junc) == 2:
-                G.add_edge(junc[0], junc[1], id=int(road))
+            if len(junc) == 2 and road_type[road] == 'tertiary':
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])])
 
-        node_list : dict = {i:j for i,j in enumerate(list(G.nodes()))}
-        return node_list, dgl.from_networkx(G)
+        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
+        print('traffic graph builded.')
+        return node_list, graph, dgl.from_networkx(graph)
 
-class HiddenPrints:
-    def __enter__(self):
-        self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
+class Bigraph(Graph):
+    def __init__(self, efile, tfile1, tfile2, tfile3, 
+                    embed_dim, hid_dim, feat_dim, 
+                    subgraph,
+                    khop, epochs, pt_path):
+        print(Fore.RED,Back.YELLOW)
+        print('Bigraph network construction!')
+        print(Style.RESET_ALL)
+        self.node_list, self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        try:
+            feat = {}
+            feat['power'] = torch.load(pt_path[0])
+            feat['junc'] = torch.load(pt_path[1])
+            print('Bigraph features loaded.')
+            self.feat = feat
+        except:
+            self.feat = self.build_feat(embed_dim, hid_dim, feat_dim,
+                                            subgraph,
+                                            khop, epochs,
+                                            pt_path)
+    
+    def build_graph(self, efile, tfile1, tfile2, tfile3):
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        sys.stdout.close()
-        sys.stdout = self._original_stdout
+        print('building bigraph ...')
+    
+        graph = nx.Graph()
+        with open(tfile1, 'r') as f:
+            data = json.load(f)
+        with open(tfile2, 'r') as f:
+            road_type = json.load(f)
+        with open(tfile3, 'r') as f:
+            tl_id_road2elec_map = json.load(f)
+        for road, junc in data.items():
+            if len(junc) == 2 and road_type[road] == 'tertiary':
+                graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
+
+        with open(efile, 'r') as f:
+            data = json.load(f)
+        for key,facility in data.items():
+            for node_id in facility.keys():
+                node = facility[node_id]
+                for neighbor in node['relation']:
+                    if int(node_id)<6e8 and (neighbor<6e8) :
+                        graph.add_edge(int(node_id),neighbor)
+        for tl_id,value in data['tl'].items():
+            if int(tl_id) in list(graph.nodes()):
+                for neighbor in value['relation']:
+                    graph.add_edge(neighbor, int(tl_id))
+
+        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
+        print('bigraph builded.')
+        return node_list, graph
+    
+    def build_feat(self, embed_dim, hid_dim, feat_dim, subgraph, k, epochs, pt_path):
+        egraph, tgraph = subgraph
+        n_power = egraph.node_num
+        n_junc  = tgraph.node_num
+        power_idx = {v:k for k, v in egraph.node_list.items()}
+        junc_idx  = {v:k for k, v in tgraph.node_list.items()}
+
+        edge_list = self.nxgraph.edges()
+        elec_edge = [(u, v) for (u, v) in edge_list if u < 6e8 and v < 6e8]
+        tran_edge = [(u, v) for (u, v) in edge_list if u > 6e8 and v > 6e8]
+        supp_edge = [(u, v) for (u, v) in edge_list 
+                                if (u, v) not in elec_edge and (u, v) not in tran_edge]
+
+        elec_src, elec_dst = np.array([power_idx[u] for (u, _) in elec_edge]), np.array([power_idx[v] for (_, v) in elec_edge])
+        tran_src, tran_dst = np.array([junc_idx[u] for (u, _) in tran_edge]), np.array([junc_idx[v] for (_, v) in tran_edge])
+        supp_src, supp_dst = np.array([junc_idx[u] for (u, _) in supp_edge]), np.array([power_idx[v] for (_, v) in supp_edge])
+        
+        hetero_graph = dgl.heterograph({
+                    ('power', 'elec', 'power'): (elec_src, elec_dst),
+                    ('power', 'eleced-by', 'power'): (elec_dst, elec_src),
+                    ('junc', 'tran', 'junc'): (tran_src, tran_dst),
+                    ('junc', 'traned-by', 'junc'): (tran_dst, tran_src),
+                    ('junc', 'supp', 'power'): (supp_src, supp_dst),
+                    ('power', 'suppd-by', 'junc'): (supp_dst, supp_src)
+                    })
+
+        hetero_graph.nodes['power'].data['feature'] = torch.nn.Embedding(n_power, embed_dim, max_norm=1).weight
+        hetero_graph.nodes['junc'].data['feature'] = torch.nn.Embedding(n_junc, embed_dim, max_norm=1).weight
+        
+        hgcn = HeteroGCN(embed_dim, hid_dim, feat_dim, hetero_graph.etypes)
+
+        bifeatures = {
+                'junc' :hetero_graph.nodes['junc'].data['feature'],
+                'power':hetero_graph.nodes['power'].data['feature']
+        }
+
+        optimizer = torch.optim.Adam(hgcn.parameters())
+        print('training features ...')
+        for epoch in range(epochs):
+
+            num = epoch % 6
+            etype = numbers_to_etypes(num)
+
+            t = time.time()
+            negative_graph = construct_negative_graph(hetero_graph, k, etype)
+            pos_score, neg_score = hgcn(hetero_graph, negative_graph, bifeatures, etype)
+            loss = compute_loss(pos_score, neg_score)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            if epoch % 20 == 0:
+                print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
+                                    " time=", "{:.4f}s".format(time.time() - t)
+                                    )
+
+        feat = hgcn.layer(hetero_graph, bifeatures)
+        try:
+            torch.save(feat['power'], pt_path[0])
+            torch.save(feat['junc'], pt_path[1])
+            print("saving features sucess")
+        except:
+            print("saving features failed")
+
+        return feat
+
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")
-
-def str2int(json_data):
-    """
-    将json的“键”由string转为int
-    """
-    new_dict = {}
-    for key, value in json_data.items():
-        new_dict[int(key)] = value
-    return new_dict
 
 class ElecNoStep:
     def __init__(self, config, topology, power_10kv, power_load):
@@ -692,8 +875,6 @@ class ElecNoStep:
         return np.array(Bus_data), np.array(Generator_data), np.array(Branch_data)
 
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-
 class Net(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
         super().__init__()
@@ -711,12 +892,20 @@ class Net(nn.Module):
 class DQN(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim, 
                 memory_capacity, iter, batch_size,
-                lr, epsilon, gamma):
+                lr, epsilon, gamma,
+                label, model_pt):
         super().__init__()
 
         self.embed_dim = in_dim
-        self.enet = Net(in_dim, hid_dim, out_dim)
-        self.tnet = Net(in_dim, hid_dim, out_dim)
+        if label == 'train':
+            self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+        elif label == 'test':
+            self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+            self.enet.load_state_dict(torch.load(model_pt))
+        else:
+            pass
+        
+        self.tnet = Net(in_dim, hid_dim, out_dim).to(device)
         self.learning_step = 0
         self.memory_num = 0
         self.mem_cap = memory_capacity
@@ -737,11 +926,10 @@ class DQN(nn.Module):
     def choose_node(self, features, state, choosen, exist):
 
         node_num = features.shape[0]
-
         if np.random.uniform() < self.epsilon:
-            outputs = self.enet(features)
-            s_mat = torch.tile(state, (node_num, 1))
-            Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1)
+            outputs = self.enet(features).to(device)
+            s_mat = torch.tile(state, (node_num, 1)).to(device)
+            Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
             Q_cp = Q_values.data.cpu().numpy()
             Q_cp[choosen] = 0
             node = int(np.argmax(Q_cp)) 
@@ -750,6 +938,19 @@ class DQN(nn.Module):
             node = random.sample(exist, 1)[0]
         
         return node
+
+    def attack(self, features, state, choosen):
+
+        node_num = features.shape[0]
+        outputs = self.enet(features).to(device)
+        s_mat = torch.tile(state, (node_num, 1)).to(device)
+        Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
+        Q_cp = Q_values.data.cpu().numpy()
+        Q_cp[choosen] = 0
+        node = int(np.argmax(Q_cp)) 
+
+        return node
+
 
     def store_transition(self, s, a, r, s_):
 
@@ -772,32 +973,32 @@ class DQN(nn.Module):
         sample_idx = np.random.choice(self.mem_cap, self.bsize)
         b_memory = self.reply_buffer[sample_idx, :]
         b_s = b_memory[:, :self.embed_dim]
-        b_a = torch.LongTensor(b_memory[:, self.embed_dim: self.embed_dim + 1].astype(int)).reshape(self.bsize, -1)
-        b_r = torch.FloatTensor(b_memory[:, self.embed_dim+1:self.embed_dim+2])
+        b_a = torch.LongTensor(b_memory[:, self.embed_dim: self.embed_dim + 1].astype(int)).reshape(self.bsize, -1).to(device)
+        b_r = torch.FloatTensor(b_memory[:, self.embed_dim+1:self.embed_dim+2]).to(device)
         b_s_ = b_memory[:, -self.embed_dim:]
 
         # q_eval
-        eval_out = self.enet(features)
-        q_eval = torch.zeros((self.bsize, node_num), dtype=torch.float)
+        eval_out = self.enet(features).to(device)
+        q_eval = torch.zeros((self.bsize, node_num), dtype=torch.float).to(device)
         for idx, s in enumerate(b_s):
-            s_mat = torch.FloatTensor(np.tile(s, (node_num, 1)))
-            Q = torch.sum((eval_out * s_mat), axis=1).reshape(node_num, -1)
+            s_mat = torch.FloatTensor(np.tile(s, (node_num, 1))).to(device)
+            Q = torch.sum((eval_out * s_mat), axis=1).reshape(node_num, -1).to(device)
             q_eval[idx] = Q.reshape(-1, node_num)
         
         # q_targ
-        targ_out = self.tnet(features)
-        q_next = torch.zeros((self.bsize, node_num), dtype=torch.float)
+        targ_out = self.tnet(features).to(device)
+        q_next = torch.zeros((self.bsize, node_num), dtype=torch.float).to(device)
         for idx, _s in enumerate(b_s_):
-            _s_mat = torch.FloatTensor(np.tile(_s, (node_num, 1)))
-            Q = torch.sum((targ_out * _s_mat), axis=1).reshape(node_num, -1)
+            _s_mat = torch.FloatTensor(np.tile(_s, (node_num, 1))).to(device)
+            Q = torch.sum((targ_out * _s_mat), axis=1).reshape(node_num, -1).to(device)
             q_next[idx] = Q.reshape(-1, node_num)
 
         # print(q_eval.shape)   [20, 10887]
         # print(q_next.shape)   [20, 10887]
 
         # q_target
-        q_eval = torch.gather(q_eval, 1, b_a)
-        q_target = b_r + (self.gamma * torch.max(q_next,dim=1)[0]).reshape(self.bsize, -1)
+        q_eval = torch.gather(q_eval, 1, b_a).to(device)
+        q_target = b_r + (self.gamma * torch.max(q_next,dim=1)[0]).reshape(self.bsize, -1).to(device)
 
         loss = self.loss(q_eval, q_target)
         self.optimizer.zero_grad()
