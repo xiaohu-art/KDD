@@ -1,8 +1,6 @@
 import yaml
 import json
 import networkx as nx
-import torch
-import dgl
 
 from model import ElecNoStep
 
@@ -12,39 +10,6 @@ def str2int(json_data):
     for key, value in json_data.items():
         new_dict[int(key)] = value
     return new_dict
-
-def numbers_to_etypes(num):
-            switcher = {
-                0: ('power', 'elec', 'power'),
-                1: ('power', 'eleced-by', 'power'),
-                2: ('junc', 'tran', 'junc'),
-                3: ('junc', 'traned-by', 'junc'),
-                4: ('junc', 'supp', 'power'),
-                5: ('power', 'suppd-by', 'junc'),
-            }
-
-            return switcher.get(num, "wrong!")
-
-def compute_loss(pos_score, neg_score):
-        n_edges = pos_score.shape[0]
-
-        return (1 - pos_score.unsqueeze(1) + neg_score.view(n_edges, -1)).clamp(min=0).mean()
-
-def construct_negative_graph(graph, k):
-    src, dst = graph.edges()
-
-    neg_src = src.repeat_interleave(k)
-    neg_dst = torch.randint(0, graph.num_nodes(), (len(src) * k,))
-    return dgl.graph((neg_src, neg_dst), num_nodes=graph.num_nodes())
-
-def construct_negative_graph(graph, k, etype):
-    utype, _, vtype = etype
-    src, dst = graph.edges(etype=etype)
-    neg_src = src.repeat_interleave(k)
-    neg_dst = torch.randint(0, graph.num_nodes(vtype), (len(src) * k,))
-    return dgl.heterograph(
-        {etype: (neg_src, neg_dst)},
-        num_nodes_dict={ntype: graph.num_nodes(ntype) for ntype in graph.ntypes})
 
 def init_env():
 

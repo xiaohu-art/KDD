@@ -52,16 +52,20 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=500,
                     pt_path=ept)
-
-    tgraph = TraGraph(file1=TFILE1, file2=TFILE2, file3=TFILE3,
-                    embed_dim=EMBED_DIM,
-                    hid_dim=HID_DIM,
-                    feat_dim=FEAT_DIM,
-                    khop=KHOP,
-                    epochs=300,
-                    pt_path=tpt)
     
     elec_env = init_env()
+
+    if args.feat == "ptr":
+        features = egraph.feat.detach()
+        features = features.to(device)
+        MODEL_PT = './model_param/elec_ptr.pt'
+    elif args.feat == "rdn":
+        try:
+            features = torch.load('./random/elec_rdn_emb.pt')
+        except:
+            features = torch.rand(egraph.node_num, EMBED_DIM).to(device)
+            torch.save(features, './random/elec_rdn_emb.pt')
+        MODEL_PT = './model_param/elec_rdn.pt'
 
     agent = DQN(in_dim=EMBED_DIM,
                 hid_dim=HID_DIM,
@@ -73,13 +77,7 @@ if __name__ == "__main__":
                 epsilon=EPSILON,
                 gamma=GAMMA,
                 label=args.label,
-                model_pt='./model_param/elec_ptr.pt')
-
-    if args.feat == "ptr":
-        features = egraph.feat.detach()
-        features = features.to(device)
-    elif args.feat == "rdn":
-        features = torch.rand(egraph.node_num, EMBED_DIM).to(device)
+                model_pt=MODEL_PT)
 
     initial_power = elec_env.ruin([])
 
@@ -89,7 +87,7 @@ if __name__ == "__main__":
 
     if args.label == 'test':
         
-        # AI attack
+        # RL attack
         t = time.time()
         num = egraph.node_num
         state = torch.sum(features, dim=0) / num
@@ -112,7 +110,7 @@ if __name__ == "__main__":
 
             result.append([len(choosen), current_power])
 
-            if len(choosen) == 20:
+            if len(choosen) == 10:
                 done = True
         
         result = np.array(result)
@@ -122,7 +120,7 @@ if __name__ == "__main__":
 
         # degree attack
         egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
-        degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
+        degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:10]
     
         elec_env.reset()
         result = []
@@ -138,7 +136,7 @@ if __name__ == "__main__":
         
         # CI attack
         egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
-        CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:20]
+        CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:10]
 
         elec_env.reset()
         result = []
