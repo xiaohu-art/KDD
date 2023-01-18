@@ -224,6 +224,8 @@ class TraGraph(Graph):
         print('Traffice network construction!')
         print(Style.RESET_ALL)
         self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
+        self.degree = dict(nx.degree(self.nxgraph))
+        self.CI = self.build_CI()
         try:
             feat = torch.load(pt_path)
             print('Traffic features loaded.')
@@ -250,6 +252,18 @@ class TraGraph(Graph):
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('traffic graph builded.')
         return node_list, graph, dgl.from_networkx(graph)
+
+    def build_CI(self):
+        CI = []
+        d = self.degree
+        for node in d:
+            ci = 0
+            neighbors = list(self.nxgraph.neighbors(node))
+            for neighbor in neighbors:
+                ci += (d[neighbor]-1)
+            CI.append((node,ci*(d[node]-1)))
+        
+        return CI
 
 class Bigraph(Graph):
     def __init__(self, efile, tfile1, tfile2, tfile3, 
