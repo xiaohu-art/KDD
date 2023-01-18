@@ -39,7 +39,7 @@ LR = args.lr
 BATCH_SIZE = args.batch
 GAMMA = args.gamma
 EPSILON = args.epsilon
-MEMORY_CAPACITY = 1000
+MEMORY_CAPACITY = 5000
 TARGET_REPLACE_ITER = 25
 BASE = 100000000
 
@@ -142,7 +142,7 @@ if __name__ == "__main__":
 
             
             tpower,elec_state = elec_env.ruin(choosen_elec,flag=0)
-            choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+            choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgraph.nxgraph)
             tgc.remove_nodes_from(choosen_road)
             t_val = calculate_pairwise_connectivity(tgc) / origin_val
 
@@ -155,9 +155,9 @@ if __name__ == "__main__":
             _state = (state * (num+1) - features[node]) / num
             state = _state
     
-            result.append([len(choosen), total_reward])
+            result.append(total_reward)
 
-            if len(choosen) == 20:
+            if len(choosen) == 50:
                 done = True
         
         result = np.array(result)
@@ -207,7 +207,7 @@ if __name__ == "__main__":
                 _state = (state * (num+1) - features[node]) / num
 
                 tpower,elec_state = elec_env.ruin(choosen_elec,flag=0)
-                choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+                choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgraph.nxgraph)
                 tgc.remove_nodes_from(choosen_road)
                 t_val = calculate_pairwise_connectivity(tgc) / origin_val
 
@@ -228,7 +228,7 @@ if __name__ == "__main__":
 
                 state = _state
 
-                if len(choosen) == 20:
+                if len(choosen) == 50:
                     result_reward.append((epoch+1,total_reward))
                     done = True
                     result.append([epoch, total_reward])
@@ -238,5 +238,5 @@ if __name__ == "__main__":
                             )
                     print(Style.RESET_ALL)
 
-        np.savetxt('./result/bi_reward.txt',np.array(result_reward))
+        np.savetxt('./result/bi_'+args.feat+'reward.txt',np.array(result_reward))
         torch.save(agent.enet.state_dict(), './model_param/bi_'+args.feat+'.pt')
