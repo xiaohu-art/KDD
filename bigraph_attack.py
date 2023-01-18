@@ -1,13 +1,12 @@
-from model import ElecGraph, TraGraph, Bigraph, DQN
-from utils import init_env
-
-import time
-import torch
-import numpy as np
 import argparse
+import time
 
-from colorama import init
-from colorama import Fore,Back,Style
+import numpy as np
+import torch
+from colorama import Back, Fore, Style, init
+from model import DQN, Bigraph, ElecGraph, TraGraph
+from utils import (calculate_pairwise_connectivity, influenced_tl_by_elec,
+                   init_env)
 
 init()
 
@@ -18,11 +17,12 @@ parser.add_argument('--batch', type=int, default=20, help='Data number used to t
 parser.add_argument('--gamma', type=float, default=0.9, help='Related to further reward')
 parser.add_argument('--lr', type=float, default=0.01, help='Laerning rate')
 parser.add_argument('--epsilon', type=float, default=0.6, help='Epsilon greedy policy')
-# parser.add_argument('--feat', type=str, required=True, help='pre-train feat or random feat')
-# parser.add_argument('--label', type=str, required=True, help='train or test')
+parser.add_argument('--feat', type=str, required=True, help='pre-train feat or random feat')
+parser.add_argument('--label', type=str, required=True, help='train or test')
 
 args = parser.parse_args()
 
+FILE = './data/e10kv2tl.json'
 EFILE = './data/electricity/all_dict_correct.json'
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
@@ -41,6 +41,7 @@ GAMMA = args.gamma
 EPSILON = args.epsilon
 MEMORY_CAPACITY = 1000
 TARGET_REPLACE_ITER = 25
+BASE = 100000000
 
 device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
@@ -62,7 +63,7 @@ if __name__ == "__main__":
                     epochs=300,
                     pt_path=tpt)
 
-    bigraph = Bigraph(efile=EFILE, tfile1=TFILE1, tfile2=TFILE2, tfile3=TFILE3,
+    bigraph = Bigraph(efile=EFILE, tfile1=TFILE1, tfile2=TFILE2, tfile3=TFILE3, file=FILE,
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
@@ -70,6 +71,172 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=600,
                     pt_path=bpt)
+                    
+    agent = DQN(in_dim=EMBED_DIM,
+                hid_dim=HID_DIM,
+                out_dim=EMBED_DIM,
+                memory_capacity=MEMORY_CAPACITY,
+                iter=TARGET_REPLACE_ITER,
+                batch_size=BATCH_SIZE,
+                lr=LR,
+                epsilon=EPSILON,
+                gamma=GAMMA,
+                label=args.label,
+                model_pt='./model_param/bi_'+args.feat+'.pt')
+    
+    elec_env = init_env()
+    initial_power = elec_env.ruin([])
 
-    print(bigraph.feat['junc'].shape)
-    print(bigraph.feat['power'].shape)
+    
+
+    if args.feat == "ptr":
+        elec_feat = bigraph.feat['power'].detach()
+        road_feat = bigraph.feat['junc'].detach()
+        features = torch.vstack((elec_feat,road_feat))
+        features = features.to(device)
+    elif args.feat == "rdn" :
+        if args.label == 'train':
+            features = torch.rand(bigraph.node_num, EMBED_DIM).to(device)
+            np.savetxt('data/random_features.txt',features.cpu())
+        elif args.label == 'test':
+            features = np.loadtxt('data/random_features.txt')
+            features = torch.Tensor(features).to(device)
+    print()
+    print(Fore.RED,Back.YELLOW,'begin attacking ...')
+    print(Style.RESET_ALL)
+
+    if args.label == 'test':
+        
+        t = time.time()
+        g = bigraph.nxgraph
+        tgc = tgraph.nxgraph.copy()
+        num = bigraph.node_num
+        state = torch.sum(features, dim=0) / num
+
+        total_reward = 0
+        choosen = []
+        choosen_road = []
+        choosen_elec = []
+        elec_env.reset()
+        result = []
+
+        origin_val = calculate_pairwise_connectivity(tgc)
+        t_val = calculate_pairwise_connectivity(tgc) / origin_val
+        tpower = initial_power
+
+        done = False
+        while not done:
+
+            h_val = t_val
+            hpower = tpower
+            node = agent.attack(features, state, choosen)
+
+            if bigraph.node_list[node]//BASE < 3:
+                continue
+            choosen.append(node)
+            if bigraph.node_list[node]//BASE == 9:
+                choosen_road.append(bigraph.node_list[node])
+            else:
+                choosen_elec.append(bigraph.node_list[node])
+            num -= 1
+
+            
+            tpower,elec_state = elec_env.ruin(choosen_elec,flag=0)
+            choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+            tgc.remove_nodes_from(choosen_road)
+            t_val = calculate_pairwise_connectivity(tgc) / origin_val
+
+            reward_elec = (hpower - tpower) / 1e5
+            reward_road = (h_val - t_val) * 1e4
+            print(reward_elec,reward_road)
+            reward = 0.5 * reward_road + 0.5 * reward_elec
+            total_reward += reward
+
+            _state = (state * (num+1) - features[node]) / num
+            state = _state
+    
+            result.append([len(choosen), total_reward])
+
+            if len(choosen) == 20:
+                done = True
+        
+        result = np.array(result)
+        print(Fore.RED,Back.YELLOW,'saving RL attack result ...')
+        print(Style.RESET_ALL)
+        np.savetxt('./result/bi_result_'+args.feat+'.txt', result)
+
+    elif args.label == 'train':
+
+        g = bigraph.nxgraph
+        result_reward = []
+        for epoch in range(EPOCH):
+
+            
+            t = time.time()
+            num = bigraph.node_num
+            state = torch.sum(features, dim=0) / num
+            total_reward = 0
+            choosen = []
+            choosen_road = []
+            choosen_elec = []
+            exist = [node for node,id in bigraph.node_list.items() if id//100000000 > 2]
+            elec_env.reset()
+
+            tgc = tgraph.nxgraph.copy()
+            origin_val = calculate_pairwise_connectivity(tgc)
+            t_val = calculate_pairwise_connectivity(tgc) / origin_val
+            tpower = initial_power
+            done = False
+            result = []
+
+            while not done:
+
+                h_val = t_val
+                hpower = tpower
+
+                node = agent.choose_node(features, state, choosen, exist)
+                if bigraph.node_list[node]//BASE < 3:
+                    continue
+                choosen.append(node)
+                exist.remove(node)
+                if bigraph.node_list[node]//BASE == 9:
+                    choosen_road.append(bigraph.node_list[node])
+                else:
+                    choosen_elec.append(bigraph.node_list[node])
+                num -= 1
+                _state = (state * (num+1) - features[node]) / num
+
+                tpower,elec_state = elec_env.ruin(choosen_elec,flag=0)
+                choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+                tgc.remove_nodes_from(choosen_road)
+                t_val = calculate_pairwise_connectivity(tgc) / origin_val
+
+                reward_elec = (hpower - tpower) / 1e5
+                reward_road = (h_val - t_val) * 1e4
+                # print(reward_elec,reward_road)
+                reward = 0.5 * reward_road + 0.5 * reward_elec
+
+                total_reward += reward 
+
+                agent.store_transition(state.data.cpu().numpy(),
+                                        node, reward,
+                                    _state.data.cpu().numpy())
+                
+                if agent.memory_num > agent.mem_cap:
+                    
+                    agent.learn(features)
+
+                state = _state
+
+                if len(choosen) == 20:
+                    result_reward.append((epoch+1,total_reward))
+                    done = True
+                    result.append([epoch, total_reward])
+                    print(Fore.RED,Back.YELLOW)
+                    print("\nEpoch:", '%03d' % (epoch + 1), " total reward = ", "{:.5f} ".format(total_reward),
+                            " time =", "{:.4f}".format(time.time() - t)
+                            )
+                    print(Style.RESET_ALL)
+
+        np.savetxt('./result/bi_reward.txt',np.array(result_reward))
+        torch.save(agent.enet.state_dict(), './model_param/bi_'+args.feat+'.pt')

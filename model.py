@@ -1,25 +1,24 @@
-import torch
-import torch.nn as nn
+import copy
+import json
+import math
+import random
+import time
+
+import dgl
+import dgl.function as dfn
+import dgl.nn as dnn
 import networkx as nx
 import numpy as np
-import random
-import json
-import time
-import dgl
-import dgl.nn as dnn
-import dgl.function as dfn
-import copy
-import math
-from pyproj import Geod
-from shapely.geometry import Point, LineString
+import torch
+import torch.nn as nn
+from colorama import Back, Fore, Style, init
 from pypower.api import ppoption, runpf
-
-from colorama import init
-from colorama import Fore,Back,Style
+from pyproj import Geod
+from shapely.geometry import LineString, Point
 
 init()
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -129,11 +128,11 @@ class Graph():
 
     @property
     def node_num(self):
-        return self.graph.num_nodes()
+        return self.nxgraph.number_of_nodes()
 
     @property
     def egde_num(self):
-        return self.graph.num_edges()
+        return self.nxgraph.number_of_edges()
 
     def build_graph(self):
         pass
@@ -252,14 +251,25 @@ class TraGraph(Graph):
         return node_list, graph, dgl.from_networkx(graph)
 
 class Bigraph(Graph):
-    def __init__(self, efile, tfile1, tfile2, tfile3, 
+    def __init__(self, efile, tfile1, tfile2, tfile3, file,
                     embed_dim, hid_dim, feat_dim, 
                     subgraph,
                     khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
         print('Bigraph network construction!')
         print(Style.RESET_ALL)
-        self.node_list, self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        egraph, tgraph = subgraph
+        self.node_list = egraph.node_list
+        tgraph.node_list = {k+egraph.node_num :v for k, v in tgraph.node_list.items()}
+        self.node_list.update(tgraph.node_list)
+        with open(file,'r') as f:
+            self.elec2road = json.load(f)
+        '''
+        node list : {node index:  node id}
+        0     -- 10886:     elec node
+        10887 -- 15711:     road node
+        '''
         try:
             feat = {}
             feat['power'] = torch.load(pt_path[0])
@@ -300,9 +310,8 @@ class Bigraph(Graph):
                 for neighbor in value['relation']:
                     graph.add_edge(neighbor, int(tl_id))
 
-        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('bigraph builded.')
-        return node_list, graph
+        return graph
     
     def build_feat(self, embed_dim, hid_dim, feat_dim, subgraph, k, epochs, pt_path):
         egraph, tgraph = subgraph

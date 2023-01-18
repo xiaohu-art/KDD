@@ -1,8 +1,9 @@
-import yaml
 import json
-import networkx as nx
 
+import networkx as nx
+import yaml
 from model import ElecNoStep
+
 
 def str2int(json_data):
     
@@ -34,24 +35,28 @@ def init_env():
     
     return elec
 
-def calculate_pairwise_connectivity(removal_nodes,Graph):
+def influenced_tl_by_elec(elec_state, elec2road, tgraph):
+    elec10kv = []
+    for key in ['ruined', 'cascaded', 'stopped']:
+        elec10kv += elec_state[5][key]
+    elec10kv = [str(node) for node in elec10kv if str(node) in elec2road.keys()]
+    tl_id = [elec2road[node] for node in elec10kv if elec2road[node] in tgraph.nodes()]
+    return tl_id
 
-    graph = Graph.copy()
-    graph.remove_nodes_from(removal_nodes)
-    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
+def calculate_size_of_gcc(Graph):
+
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(Graph)]
+    size_of_gcc = max(size_of_connected_components)
+
+    return size_of_gcc
+
+def calculate_pairwise_connectivity(Graph):
+
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(Graph)] 
     element_of_pc  = [size*(size - 1)/2 for size in size_of_connected_components] 
     pairwise_connectivity = sum(element_of_pc)
 
     return pairwise_connectivity
-
-def calculate_size_of_gcc(removal_nodes,Graph):
-
-    graph = Graph.copy()
-    graph.remove_nodes_from(removal_nodes)
-    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
-    size_of_gcc = max(size_of_connected_components)
-
-    return size_of_gcc
 
 def calculate_anc(removal_nodes,Graph,connectivity = 'pc'):
     """
