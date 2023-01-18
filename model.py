@@ -19,7 +19,7 @@ from colorama import Fore,Back,Style
 
 init()
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -129,11 +129,11 @@ class Graph():
 
     @property
     def node_num(self):
-        return self.graph.num_nodes()
+        return self.nxgraph.number_of_nodes()
 
     @property
     def egde_num(self):
-        return self.graph.num_edges()
+        return self.nxgraph.number_of_edges()
 
     def build_graph(self):
         pass
@@ -259,7 +259,16 @@ class Bigraph(Graph):
         print(Fore.RED,Back.YELLOW)
         print('Bigraph network construction!')
         print(Style.RESET_ALL)
-        self.node_list, self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        egraph, tgraph = subgraph
+        self.node_list = egraph.node_list
+        tgraph.node_list = {k+egraph.node_num :v for k, v in tgraph.node_list.items()}
+        self.node_list.update(tgraph.node_list)
+        '''
+        node list : {node index:  node id}
+        0     -- 10886:     elec node
+        10887 -- 15711:     road node
+        '''
         try:
             feat = {}
             feat['power'] = torch.load(pt_path[0])
@@ -300,9 +309,8 @@ class Bigraph(Graph):
                 for neighbor in value['relation']:
                     graph.add_edge(neighbor, int(tl_id))
 
-        node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('bigraph builded.')
-        return node_list, graph
+        return graph
     
     def build_feat(self, embed_dim, hid_dim, feat_dim, subgraph, k, epochs, pt_path):
         egraph, tgraph = subgraph
