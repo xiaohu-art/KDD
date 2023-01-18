@@ -34,43 +34,17 @@ def init_env():
     
     return elec
 
-def calculate_pairwise_connectivity(removal_nodes,Graph):
+def calculate_size_of_gcc(Graph):
 
-    graph = Graph.copy()
-    graph.remove_nodes_from(removal_nodes)
-    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
-    element_of_pc  = [size*(size - 1)/2 for size in size_of_connected_components] 
-    pairwise_connectivity = sum(element_of_pc)
-
-    return pairwise_connectivity
-
-def calculate_size_of_gcc(removal_nodes,Graph):
-
-    graph = Graph.copy()
-    graph.remove_nodes_from(removal_nodes)
-    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(graph)] # 计算各连通分量大小
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(Graph)]
     size_of_gcc = max(size_of_connected_components)
 
     return size_of_gcc
 
-def calculate_anc(removal_nodes,Graph,connectivity = 'pc'):
-    """
-    accumulated normalized connectivity
-    Parameters
-        removal_node: a sequence of nodes(list)
-        Graph: network(networkx)
-        connectivity: predifined connectivity method(str->'pc','gcc')
-    return anc(float->[0,1])
-    """
-    number_of_nodes = len(removal_nodes)
-    if number_of_nodes == 0:
-        return 1
-    if connectivity == 'pc':
-        connectivity_part = [calculate_pairwise_connectivity(removal_nodes[:i], Graph) for i in range(number_of_nodes)] 
-        connectivity_all = calculate_pairwise_connectivity([],Graph)
-    elif connectivity == 'gcc':
-        connectivity_part = [calculate_size_of_gcc(removal_nodes[:i], Graph) for i in range(number_of_nodes)] 
-        connectivity_all = calculate_size_of_gcc([],Graph)
-    anc = sum(connectivity_part)/connectivity_all/number_of_nodes
+def calculate_pairwise_connectivity(Graph):
 
-    return anc
+    size_of_connected_components = [len(part_graph) for part_graph in nx.connected_components(Graph)] 
+    element_of_pc  = [size*(size - 1)/2 for size in size_of_connected_components] 
+    pairwise_connectivity = sum(element_of_pc)
+
+    return pairwise_connectivity
