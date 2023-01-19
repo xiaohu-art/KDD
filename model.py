@@ -953,7 +953,7 @@ class DQN(nn.Module):
             s_mat = torch.tile(state, (node_num, 1)).to(device)
             Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
             Q_cp = Q_values.data.cpu().numpy()
-            Q_cp[choosen] = 0
+            Q_cp[choosen] = -1e8
             node = int(np.argmax(Q_cp)) 
 
         else:
@@ -968,7 +968,7 @@ class DQN(nn.Module):
         s_mat = torch.tile(state, (node_num, 1)).to(device)
         Q_values = torch.sum(outputs * s_mat, axis=1).reshape(node_num, -1).to(device)
         Q_cp = Q_values.data.cpu().numpy()
-        Q_cp[choosen] = 0
+        Q_cp[choosen] = -1e8
         node = int(np.argmax(Q_cp)) 
 
         return node
