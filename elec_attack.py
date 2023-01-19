@@ -199,4 +199,4 @@ if __name__ == "__main__":
                             )
                     
 
-        torch.save(agent.enet.state_dict(), 'elec_'+args.feat+'.pt')
+        torch.save(agent.enet.state_dict(), './model_param/elec_'+args.feat+'.pt')
