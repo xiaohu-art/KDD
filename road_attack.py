@@ -100,14 +100,13 @@ if __name__ == "__main__":
             num -= 1
             
             val = calculate_pairwise_connectivity(tgc) / origin_val
-            print(tgraph.node_list[node], val)
             _state = (state * (num+1) - features[node]) / num
 
             result.append([len(choosen), val])
 
             if len(choosen) == 20:
                 done = True
-        exit()
+                
         result = np.array(result)
         np.savetxt('./results/road_result_'+args.feat+'.txt', result)
 
