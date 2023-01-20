@@ -107,6 +107,7 @@ if __name__ == "__main__":
 
             current_power = elec_env.ruin([egraph.node_list[node]])
             _state = (state * (num+1) - features[node]) / num
+            state = _state
 
             result.append([len(choosen), current_power])
 

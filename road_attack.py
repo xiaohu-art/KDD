@@ -101,7 +101,8 @@ if __name__ == "__main__":
             
             val = calculate_pairwise_connectivity(tgc) / origin_val
             _state = (state * (num+1) - features[node]) / num
-
+            state = _state
+            
             result.append([len(choosen), val])
 
             if len(choosen) == 20:
