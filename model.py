@@ -111,7 +111,7 @@ def construct_negative_graph(graph, k):
     neg_dst = torch.randint(0, graph.num_nodes(), (len(src) * k,))
     return dgl.graph((neg_src, neg_dst), num_nodes=graph.num_nodes())
 
-def construct_negative_graph(graph, k, etype):
+def construct_negative_graph_with_type(graph, k, etype):
     utype, _, vtype = etype
     src, dst = graph.edges(etype=etype)
     neg_src = src.repeat_interleave(k)
@@ -192,15 +192,18 @@ class ElecGraph(Graph):
     def build_graph(self, file):
 
         print('building elec graph ...')
-        with open(file, 'r') as f:
-            data = json.load(f)
-        elec_graph = nx.Graph()
-        for key,facility in data.items():
-            for node_id in facility.keys():
-                node = facility[node_id]
-                for neighbor in node['relation']:
-                    if int(node_id)<6e8 and neighbor<6e8:
-                        elec_graph.add_edge(int(node_id),neighbor)
+        try:
+            elec_graph = nx.read_gpickle(file)
+        except:
+            with open(file, 'r') as f:
+                data = json.load(f)
+            elec_graph = nx.Graph()
+            for key,facility in data.items():
+                for node_id in facility.keys():
+                    node = facility[node_id]
+                    for neighbor in node['relation']:
+                        if int(node_id)<6e8 and neighbor<6e8:
+                            elec_graph.add_edge(int(node_id),neighbor)
 
         node_list : dict = {i:j for i,j in enumerate(list(elec_graph.nodes()))}
         print('electric graph builded.')
@@ -219,7 +222,9 @@ class ElecGraph(Graph):
         return CI
 
 class TraGraph(Graph):
-    def __init__(self, file1, file2, file3, embed_dim, hid_dim, feat_dim, khop, epochs, pt_path):
+    def __init__(self, file1, file2, file3, 
+                embed_dim, hid_dim, feat_dim, 
+                khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
         print('Traffice network construction!')
         print(Style.RESET_ALL)
@@ -246,7 +251,7 @@ class TraGraph(Graph):
         with open(file3, 'r') as f:
             tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
-            if len(junc) == 2 and road_type[road] == 'tertiary':
+            if len(junc) == 2 and road_type[road] == 'teritiary':
                 graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])])
 
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
@@ -370,7 +375,7 @@ class Bigraph(Graph):
             etype = numbers_to_etypes(num)
 
             t = time.time()
-            negative_graph = construct_negative_graph(hetero_graph, k, etype)
+            negative_graph = construct_negative_graph_with_type(hetero_graph, k, etype)
             pos_score, neg_score = hgcn(hetero_graph, negative_graph, bifeatures, etype)
             loss = compute_loss(pos_score, neg_score)
             optimizer.zero_grad()

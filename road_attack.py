@@ -27,6 +27,7 @@ TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
 tpt = './embedding/tra_feat.pt'
+# tpt = './embedding/secondary.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -50,6 +51,7 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
+    
     
     if args.feat == "ptr":
         features = tgraph.feat.detach()

@@ -1,5 +1,7 @@
 import yaml
 import json
+import random
+import os
 import networkx as nx
 
 from model import ElecNoStep
@@ -48,3 +50,32 @@ def calculate_pairwise_connectivity(Graph):
     pairwise_connectivity = sum(element_of_pc)
 
     return pairwise_connectivity
+
+
+def mask(graph, mask_dir):
+
+    edges = list(graph.edges())
+    edges = [(u, v) for (u, v) in edges if u > 2e8 and v > 2e8]
+    random.shuffle(edges)
+
+    len_9 = int(graph.number_of_edges() * 0.9)
+
+    len_7 = int(graph.number_of_edges() * 0.7)
+
+    edges_9 = edges[:len_9]
+    edges_7 = edges[:len_7]
+
+    g_9 = nx.Graph()
+    g_9.add_nodes_from(graph.nodes())
+    g_9.add_edges_from(edges_9)
+    
+    g_7 = nx.Graph()
+    g_7.add_nodes_from(graph.nodes())
+    g_7.add_edges_from(edges_7)
+
+    g9_pth = os.path.join(mask_dir, 'g9.gpickle')
+    g7_pth = os.path.join(mask_dir, 'g7.gpickle')
+
+    nx.write_gpickle(g_9, g9_pth)
+    nx.write_gpickle(g_7, g7_pth)
+    
