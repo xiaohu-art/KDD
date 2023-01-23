@@ -223,12 +223,12 @@ class ElecGraph(Graph):
 
 class TraGraph(Graph):
     def __init__(self, file1, file2, file3, 
-                embed_dim, hid_dim, feat_dim, 
+                embed_dim, hid_dim, feat_dim, r_type,
                 khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
         print('Traffice network construction!')
         print(Style.RESET_ALL)
-        self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3)
+        self.node_list, self.nxgraph, self.graph = self.build_graph(file1, file2, file3, r_type)
         self.degree = dict(nx.degree(self.nxgraph))
         self.CI = self.build_CI()
         try:
@@ -240,7 +240,7 @@ class TraGraph(Graph):
                                          khop, epochs,
                                          pt_path)
 
-    def build_graph(self, file1, file2, file3):
+    def build_graph(self, file1, file2, file3, r_type):
 
         print('building traffic graph ...')
         graph = nx.Graph()
@@ -251,7 +251,7 @@ class TraGraph(Graph):
         with open(file3, 'r') as f:
             tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
-            if len(junc) == 2 and road_type[road] == 'teritiary':
+            if len(junc) == 2 and road_type[road] == r_type:
                 graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])])
 
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}

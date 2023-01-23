@@ -26,8 +26,9 @@ TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
-tpt = './embedding/tra_feat.pt'
-# tpt = './embedding/secondary.pt'
+# tpt = './embedding/tra_feat.pt'
+tpt = './embedding/secondary.pt'
+# tpt = './embedding/primary.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -48,15 +49,17 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
+                    r_type='secondary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
-    
-    
+
     if args.feat == "ptr":
         features = tgraph.feat.detach()
         features = features.to(device)
-        MODEL_PT = './model_param/road_ptr.pt'
+        # MODEL_PT = './model_param/road_ptr.pt'
+        # MODEL_PT = './model_param/road_primary_ptr.pt'
+        MODEL_PT = './model_param/road_second_ptr.pt'
     elif args.feat == "rdn":
         try:
             features = torch.load('./random/road_rdn_emb.pt')
@@ -111,32 +114,32 @@ if __name__ == "__main__":
                 done = True
                 
         result = np.array(result)
-        np.savetxt('./results/road_result_'+args.feat+'.txt', result)
+        np.savetxt('./results_secondary/road_result_'+args.feat+'_ground.txt', result)
 
 
-        # degree attack
-        result = []
-        degree_list = sorted(tgraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
-        tgc = tgraph.nxgraph.copy()
-        for id, (node, degree) in enumerate(degree_list):
-            tgc.remove_node(node)
-            val = calculate_pairwise_connectivity(tgc) / origin_val
-            result.append([id+1, val])
+        # # degree attack
+        # result = []
+        # degree_list = sorted(tgraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
+        # tgc = tgraph.nxgraph.copy()
+        # for id, (node, degree) in enumerate(degree_list):
+        #     tgc.remove_node(node)
+        #     val = calculate_pairwise_connectivity(tgc) / origin_val
+        #     result.append([id+1, val])
 
-        result = np.array(result)
-        np.savetxt('./results/road_degree.txt', result)
+        # result = np.array(result)
+        # np.savetxt('./results/road_degree.txt', result)
 
-        # CI attack
-        result = []
-        ci_list = sorted(tgraph.CI, key = lambda x:x[1],reverse = True)[:20]
-        tgc = tgraph.nxgraph.copy()
-        for id, (node, CI) in enumerate(ci_list):
-            tgc.remove_node(node)
-            val = calculate_pairwise_connectivity(tgc) / origin_val
-            result.append([id+1, val])
+        # # CI attack
+        # result = []
+        # ci_list = sorted(tgraph.CI, key = lambda x:x[1],reverse = True)[:20]
+        # tgc = tgraph.nxgraph.copy()
+        # for id, (node, CI) in enumerate(ci_list):
+        #     tgc.remove_node(node)
+        #     val = calculate_pairwise_connectivity(tgc) / origin_val
+        #     result.append([id+1, val])
 
-        result = np.array(result)
-        np.savetxt('./results/road_ci.txt', result)
+        # result = np.array(result)
+        # np.savetxt('./results/road_ci.txt', result)
 
 
 
@@ -190,4 +193,4 @@ if __name__ == "__main__":
                             " time =", "{:.4f}".format(time.time() - t)
                             )
 
-        torch.save(agent.enet.state_dict(), './model_param/road_'+args.feat+'.pt')
+        torch.save(agent.enet.state_dict(), './model_param/road_second_'+args.feat+'.pt')
