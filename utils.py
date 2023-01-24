@@ -51,6 +51,13 @@ def calculate_pairwise_connectivity(Graph):
 
     return pairwise_connectivity
 
+def influenced_tl_by_elec(elec_state, elec2road, tgraph):
+    elec10kv = []
+    for key in ['ruined', 'cascaded', 'stopped']:
+        elec10kv += elec_state[5][key]
+    elec10kv = [str(node) for node in elec10kv if str(node) in elec2road.keys()]
+    tl_id = [elec2road[node] for node in elec10kv if elec2road[node] in tgraph.nodes()]
+    return tl_id
 
 def mask(graph, mask_dir):
 

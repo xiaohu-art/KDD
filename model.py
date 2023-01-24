@@ -271,18 +271,20 @@ class TraGraph(Graph):
         return CI
 
 class Bigraph(Graph):
-    def __init__(self, efile, tfile1, tfile2, tfile3, 
+    def __init__(self, efile, tfile1, tfile2, tfile3, file,
                     embed_dim, hid_dim, feat_dim, 
-                    subgraph,
+                    r_type, subgraph,
                     khop, epochs, pt_path):
         print(Fore.RED,Back.YELLOW)
         print('Bigraph network construction!')
         print(Style.RESET_ALL)
-        self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3)
+        self.nxgraph = self.build_graph(efile, tfile1, tfile2, tfile3, r_type)
         egraph, tgraph = subgraph
         self.node_list = egraph.node_list
         tgraph.node_list = {k+egraph.node_num :v for k, v in tgraph.node_list.items()}
         self.node_list.update(tgraph.node_list)
+        with open(file,'r') as f:
+            self.elec2road = json.load(f)
         '''
         node list : {node index:  node id}
         0     -- 10886:     elec node
@@ -300,7 +302,7 @@ class Bigraph(Graph):
                                             khop, epochs,
                                             pt_path)
     
-    def build_graph(self, efile, tfile1, tfile2, tfile3):
+    def build_graph(self, efile, tfile1, tfile2, tfile3, r_type):
 
         print('building bigraph ...')
     
@@ -312,7 +314,7 @@ class Bigraph(Graph):
         with open(tfile3, 'r') as f:
             tl_id_road2elec_map = json.load(f)
         for road, junc in data.items():
-            if len(junc) == 2 and road_type[road] == 'tertiary':
+            if len(junc) == 2 and road_type[road] == r_type:
                 graph.add_edge(tl_id_road2elec_map[str(junc[0])], tl_id_road2elec_map[str(junc[1])], id=int(road))
 
         with open(efile, 'r') as f:
@@ -361,7 +363,7 @@ class Bigraph(Graph):
         hetero_graph.nodes['junc'].data['feature'] = torch.nn.Embedding(n_junc, embed_dim, max_norm=1).weight
         
         hgcn = HeteroGCN(embed_dim, hid_dim, feat_dim, hetero_graph.etypes)
-
+        print(hetero_graph)
         bifeatures = {
                 'junc' :hetero_graph.nodes['junc'].data['feature'],
                 'power':hetero_graph.nodes['power'].data['feature']

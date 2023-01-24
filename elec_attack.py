@@ -23,15 +23,14 @@ parser.add_argument('--label', type=str, required=True, help='train or test')
 
 args = parser.parse_args()
 
-# EFILE = './data/electricity/all_dict_correct.json'
-EFILE = './mask_graph/g9.gpickle'
+EFILE = './data/electricity/all_dict_correct.json'
+# EFILE = './mask_graph/g9.gpickle'
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
-# ept = './embedding/elec_feat.pt'
+ept = './embedding/elec_feat.pt'
 # ept = './embedding/elec9_feat.pt'
-ept = './embedding/elec7_feat.pt'
-tpt = './embedding/tra_feat.pt'
+# ept = './embedding/elec7_feat.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
