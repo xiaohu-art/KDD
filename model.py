@@ -338,7 +338,7 @@ class Bigraph(Graph):
         n_power = egraph.node_num
         n_junc  = tgraph.node_num
         power_idx = {v:k for k, v in egraph.node_list.items()}
-        junc_idx  = {v:k for k, v in tgraph.node_list.items()}
+        junc_idx  = {v:k-n_power for k, v in tgraph.node_list.items()}
 
         edge_list = self.nxgraph.edges()
         elec_edge = [(u, v) for (u, v) in edge_list if u < 6e8 and v < 6e8]
@@ -363,7 +363,7 @@ class Bigraph(Graph):
         hetero_graph.nodes['junc'].data['feature'] = torch.nn.Embedding(n_junc, embed_dim, max_norm=1).weight
         
         hgcn = HeteroGCN(embed_dim, hid_dim, feat_dim, hetero_graph.etypes)
-        print(hetero_graph)
+        
         bifeatures = {
                 'junc' :hetero_graph.nodes['junc'].data['feature'],
                 'power':hetero_graph.nodes['power'].data['feature']

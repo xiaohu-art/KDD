@@ -21,7 +21,7 @@ parser.add_argument('--label', type=str, required=True, help='train or test')
 
 args = parser.parse_args()
 
-FILE = './data/e10kv2tl.json'
+FILE = './data/electricity/e10kv2tl.json'
 EFILE = './data/electricity/all_dict_correct.json'
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
@@ -72,9 +72,6 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=600,
                     pt_path=bpt)
-
-    print(bigraph.nxgraph)
-    exit()
 
     if args.feat == "ptr":
         elec_feat = bigraph.feat['power'].detach()
@@ -177,7 +174,7 @@ if __name__ == "__main__":
             choosen = []
             choosen_road = []
             choosen_elec = []
-            exist = [node for node,id in bigraph.node_list.items() if id//100000000 > 2]
+            exist = [node for node,id in bigraph.node_list.items() if id//BASE > 2]
 
             elec_env.reset()
             tgc = tgraph.nxgraph.copy()
@@ -223,7 +220,7 @@ if __name__ == "__main__":
 
                 state = _state
 
-                if len(choosen) == 20:
+                if len(choosen) == 50:
                     result_reward.append((epoch+1,total_reward))
                     done = True
                     result.append([epoch, total_reward])
