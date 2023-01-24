@@ -27,8 +27,8 @@ TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
 # tpt = './embedding/tra_feat.pt'
-# tpt = './embedding/secondary.pt'
-tpt = './embedding/primary.pt'
+tpt = './embedding/secondary.pt'
+# tpt = './embedding/primary.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -49,7 +49,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='primary',
+                    r_type='secondary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -58,7 +58,6 @@ if __name__ == "__main__":
         features = tgraph.feat.detach()
         features = features.to(device)
         MODEL_PT = './model_param/road_ptr.pt'
-        # MODEL_PT = './model_param/road_second_ptr.pt'
     elif args.feat == "rdn":
         try:
             features = torch.load('./random/road_rdn_emb.pt')
