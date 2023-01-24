@@ -18,7 +18,7 @@ from shapely.geometry import LineString, Point
 
 init()
 
-device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):
@@ -157,7 +157,7 @@ class Graph():
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            if epoch % 20 == 0:
+            if epoch % 1 == 0:
                 print("Epoch:", '%03d' % (epoch + 1), " train_loss = ", "{:.5f} ".format(loss.item()),
                             " time=", "{:.4f}s".format(time.time() - t)
                             )
@@ -249,6 +249,8 @@ class TraGraph(Graph):
         node_list : dict = {i:j for i,j in enumerate(list(graph.nodes()))}
         print('traffic graph builded.')
         return node_list, graph, dgl.from_networkx(graph)
+    
+    
 
 class Bigraph(Graph):
     def __init__(self, efile, tfile1, tfile2, tfile3, file,
@@ -274,7 +276,6 @@ class Bigraph(Graph):
             feat = {}
             feat['power'] = torch.load(pt_path[0])
             feat['junc'] = torch.load(pt_path[1])
-            print('Bigraph features loaded.')
             self.feat = feat
         except:
             self.feat = self.build_feat(embed_dim, hid_dim, feat_dim,
@@ -318,7 +319,7 @@ class Bigraph(Graph):
         n_power = egraph.node_num
         n_junc  = tgraph.node_num
         power_idx = {v:k for k, v in egraph.node_list.items()}
-        junc_idx  = {v:k for k, v in tgraph.node_list.items()}
+        junc_idx  = {v:k-egraph.node_num for k, v in tgraph.node_list.items()}
 
         edge_list = self.nxgraph.edges()
         elec_edge = [(u, v) for (u, v) in edge_list if u < 6e8 and v < 6e8]
@@ -330,18 +331,29 @@ class Bigraph(Graph):
         tran_src, tran_dst = np.array([junc_idx[u] for (u, _) in tran_edge]), np.array([junc_idx[v] for (_, v) in tran_edge])
         supp_src, supp_dst = np.array([junc_idx[u] for (u, _) in supp_edge]), np.array([power_idx[v] for (_, v) in supp_edge])
         
+        elec_num = len(elec_src)
+        tran_num = len(tran_src)
+        supp_num = len(supp_src)
+
         hetero_graph = dgl.heterograph({
                     ('power', 'elec', 'power'): (elec_src, elec_dst),
                     ('power', 'eleced-by', 'power'): (elec_dst, elec_src),
                     ('junc', 'tran', 'junc'): (tran_src, tran_dst),
                     ('junc', 'traned-by', 'junc'): (tran_dst, tran_src),
                     ('junc', 'supp', 'power'): (supp_src, supp_dst),
-                    ('power', 'suppd-by', 'junc'): (supp_dst, supp_src)
+                    ('power', 'supped-by', 'junc'): (supp_dst, supp_src)
                     })
+
+        hetero_graph.edges['elec'].data['weight'] = torch.full((elec_num, 1), 2)
+        hetero_graph.edges['eleced-by'].data['weight'] = torch.full((elec_num, 1), 2)
+        hetero_graph.edges['tran'].data['weight'] = torch.full((tran_num, 1), 0.5)
+        hetero_graph.edges['traned-by'].data['weight'] = torch.full((tran_num, 1), 0.5)
+        hetero_graph.edges['supp'].data['weight'] = torch.full((supp_num, 1), 1)
+        hetero_graph.edges['supped-by'].data['weight'] = torch.full((supp_num, 1), 1)
 
         hetero_graph.nodes['power'].data['feature'] = torch.nn.Embedding(n_power, embed_dim, max_norm=1).weight
         hetero_graph.nodes['junc'].data['feature'] = torch.nn.Embedding(n_junc, embed_dim, max_norm=1).weight
-        
+
         hgcn = HeteroGCN(embed_dim, hid_dim, feat_dim, hetero_graph.etypes)
 
         bifeatures = {
@@ -377,7 +389,6 @@ class Bigraph(Graph):
             print("saving features failed")
 
         return feat
-
 
 BASE = 100000000
 geod = Geod(ellps="WGS84")
@@ -908,9 +919,16 @@ class DQN(nn.Module):
         self.embed_dim = in_dim
         if label == 'train':
             self.enet = Net(in_dim, hid_dim, out_dim).to(device)
+            try:
+                self.enet.load_state_dict(torch.load(model_pt))
+                print('Load pretrained moodel')
+            except:
+                print('Create new moodel')
+
         elif label == 'test':
             self.enet = Net(in_dim, hid_dim, out_dim).to(device)
             self.enet.load_state_dict(torch.load(model_pt))
+            print('Load pretrained moodel')
         else:
             pass
         
