@@ -18,7 +18,7 @@ from shapely.geometry import LineString, Point
 
 init()
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
 class SAGE(nn.Module):
     def __init__(self, in_dim, hid_dim, out_dim):

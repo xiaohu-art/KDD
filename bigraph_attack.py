@@ -47,7 +47,7 @@ NUM_TRAIN = 30
 NUM_TEST = 20
 
 
-device = torch.device("cuda:2" if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda:1" if torch.cuda.is_available() else 'cpu')
 
 if __name__ == "__main__":
 
