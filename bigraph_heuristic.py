@@ -50,8 +50,8 @@ if __name__ == "__main__":
                 pt_path=bpt)
 
 
-    num_elec = 5
-    num_road = 5
+    num_elec = 10
+    num_road = 10
     bigraph_CI = nodes_ranked_by_CI(bigraph.nxgraph)
     bigraph_degree = nodes_ranked_by_Degree(bigraph.nxgraph)
     egraph_CI = nodes_ranked_by_CI(egraph.nxgraph)
@@ -61,12 +61,13 @@ if __name__ == "__main__":
 
 
 
-    attack_nodes = egraph_CI[:num_elec] + tgraph_CI[:num_road]
+    # attack_nodes = egraph_CI[:num_elec] + tgraph_CI[:num_road]
+    attack_nodes = egraph_degree[:num_elec] + tgraph_degree[:num_road]
 
     # attack_nodes = bigraph_CI[:20]
     # attack_nodes = bigraph_degree[:20]
     
-    # random.shuffle(attack_nodes)
+    random.shuffle(attack_nodes)
     
     tgc = tgraph.nxgraph.copy()
     result = [0]
@@ -101,7 +102,10 @@ if __name__ == "__main__":
         result.append(total_reward)
 
     # np.savetxt('./result/bi_degree_{}_{}.txt'.format(num_elec,num_road),np.array(result))
-    np.savetxt('./result/heuristic/bi_CI_{}_{}.txt'.format(num_elec,num_road),np.array(result))
+    # np.savetxt('./result/heuristic/bi_CI_reward_{}_{}.txt'.format(num_elec,num_road),np.array(result))
+    # np.savetxt('./result/heuristic/bi_CI_nodes_{}_{}.txt'.format(num_elec,num_road),np.array(attack_nodes))
+    np.savetxt('./result/heuristic/bi_degree_reward_{}_{}.txt'.format(num_elec,num_road),np.array(result))
+    np.savetxt('./result/heuristic/bi_degree_nodes_{}_{}.txt'.format(num_elec,num_road),np.array(attack_nodes))
 
     # tgc = tgraph.nxgraph.copy()
     # reward = []
