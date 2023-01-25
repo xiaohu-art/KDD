@@ -1035,3 +1035,18 @@ class DQN(nn.Module):
         self.optimizer.step()
 
         return
+
+class Regressor(nn.Module):
+    def __init__(self, input_dim, hid_dim, out_dim):
+        super(Regressor, self).__init__()
+        self.hidden = nn.Linear(input_dim, hid_dim)
+        self.output = nn.Linear(hid_dim, out_dim)
+        self.sigmoid = nn.Sigmoid()
+        self.relu = nn.ReLU()
+
+    def forward(self, feat):
+        out = self.hidden(feat)
+        out = self.relu(out)
+        out = self.output(out)
+
+        return self.sigmoid(out)
