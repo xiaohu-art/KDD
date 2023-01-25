@@ -27,8 +27,9 @@ TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
 # tpt = './embedding/tra_feat.pt'
-tpt = './embedding/secondary.pt'
+# tpt = './embedding/secondary.pt'
 # tpt = './embedding/primary.pt'
+tpt = './embedding/perturb_primary.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -49,7 +50,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='secondary',
+                    r_type='primary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -108,7 +109,7 @@ if __name__ == "__main__":
             
             result.append([len(choosen), val])
 
-            if len(choosen) == 10:
+            if len(choosen) == 20:
                 done = True
                 
         result = np.array(result)
@@ -117,7 +118,7 @@ if __name__ == "__main__":
 
         # degree attack
         result = []
-        degree_list = sorted(tgraph.degree.items(), key = lambda x:x[1],reverse = True)[:10]
+        degree_list = sorted(tgraph.degree.items(), key = lambda x:x[1],reverse = True)[:20]
         tgc = tgraph.nxgraph.copy()
         for id, (node, degree) in enumerate(degree_list):
             tgc.remove_node(node)
@@ -129,7 +130,7 @@ if __name__ == "__main__":
 
         # CI attack
         result = []
-        ci_list = sorted(tgraph.CI, key = lambda x:x[1],reverse = True)[:10]
+        ci_list = sorted(tgraph.CI, key = lambda x:x[1],reverse = True)[:20]
         tgc = tgraph.nxgraph.copy()
         for id, (node, CI) in enumerate(ci_list):
             tgc.remove_node(node)

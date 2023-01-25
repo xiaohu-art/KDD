@@ -231,5 +231,4 @@ if __name__ == "__main__":
             if epoch % 50 == 0:
                 torch.save(agent.enet.state_dict(), './model/'+args.feat+'/'+str(epoch)+'.pt')
 
-        np.savetxt('./result/bi_'+args.feat+'reward.txt',np.array(result_reward))
         

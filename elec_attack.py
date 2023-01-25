@@ -29,8 +29,6 @@ TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
-# ept = './embedding/elec9_feat.pt'
-# ept = './embedding/elec7_feat.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -54,7 +52,7 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=500,
                     pt_path=ept)
-
+                    
     elec_env = init_env()
 
     if args.feat == "ptr":
