@@ -68,7 +68,9 @@ if __name__ == "__main__":
         negative_graph = construct_negative_graph(perturb_graph, 5)
         pos_score, neg_score = gcn(perturb_graph, negative_graph, perturb_graph.ndata['feat'])
         feat = gcn.sage(perturb_graph, perturb_graph.ndata['feat'])
+
         dist = torch.dist(feat, orig_feat, p=2)
+        
         loss = compute_loss(pos_score, neg_score) + 0.1 * dist
         optimizer.zero_grad()
         loss.backward()
