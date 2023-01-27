@@ -23,8 +23,8 @@ parser.add_argument('--label', type=str, required=True, help='train or test')
 
 args = parser.parse_args()
 
-# EFILE = './data/electricity/all_dict_correct.json'
-EFILE = './data/electricity/all_dict_0.json'
+EFILE = './data/electricity/all_dict_correct.json'
+# EFILE = './data/electricity/all_dict_0.json'
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
@@ -53,7 +53,7 @@ if __name__ == "__main__":
                     khop=KHOP,
                     epochs=500,
                     pt_path=ept)
-                    
+
     elec_env = init_env()
 
     if args.feat == "ptr":
@@ -100,9 +100,11 @@ if __name__ == "__main__":
         done = False
         while not done:
             node = agent.attack(features, state, choosen)
+            
             if egraph.node_list[node]// 100000000 < 3:
                 continue
-
+            
+            print(node)
             choosen.append(node)
             num -= 1
 
@@ -120,37 +122,37 @@ if __name__ == "__main__":
         print(Style.RESET_ALL)
         np.savetxt('./results/elec_result_'+args.feat+'.txt', result)
 
-        # degree attack
-        egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
-        degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:10]
+        # # degree attack
+        # egraph.degree = {key:val for key, val in egraph.degree.items() if key//100000000 > 2}
+        # degree_list = sorted(egraph.degree.items(), key = lambda x:x[1],reverse = True)[:10]
     
-        elec_env.reset()
-        result = []
+        # elec_env.reset()
+        # result = []
 
-        for id, (node, degree) in enumerate(degree_list):
-            current_power = elec_env.ruin([node])
-            result.append([id+1, current_power])
+        # for id, (node, degree) in enumerate(degree_list):
+        #     current_power = elec_env.ruin([node])
+        #     result.append([id+1, current_power])
 
-        result = np.array(result)
-        print(Fore.RED,Back.YELLOW,'saving degree attack result ...')
-        print(Style.RESET_ALL)
-        np.savetxt('./results/elec_degree.txt', result)
+        # result = np.array(result)
+        # print(Fore.RED,Back.YELLOW,'saving degree attack result ...')
+        # print(Style.RESET_ALL)
+        # np.savetxt('./results/elec_degree.txt', result)
         
-        # CI attack
-        egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
-        CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:10]
+        # # CI attack
+        # egraph.CI = {node:ci for node, ci in egraph.CI if node//100000000 > 2}
+        # CI_list = sorted(egraph.CI.items(), key = lambda x:x[1],reverse = True)[:10]
 
-        elec_env.reset()
-        result = []
+        # elec_env.reset()
+        # result = []
 
-        for id, (node, CI) in enumerate(CI_list):
-            current_power = elec_env.ruin([node])
-            result.append([id+1, current_power])
+        # for id, (node, CI) in enumerate(CI_list):
+        #     current_power = elec_env.ruin([node])
+        #     result.append([id+1, current_power])
 
-        result = np.array(result)
-        print(Fore.RED,Back.YELLOW,'saving CI attack result ...')
-        print(Style.RESET_ALL)
-        np.savetxt('./results/elec_CI.txt', result)
+        # result = np.array(result)
+        # print(Fore.RED,Back.YELLOW,'saving CI attack result ...')
+        # print(Style.RESET_ALL)
+        # np.savetxt('./results/elec_CI.txt', result)
 
     elif args.label == 'train':
 
