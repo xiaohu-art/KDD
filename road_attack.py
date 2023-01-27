@@ -29,7 +29,8 @@ ept = './embedding/elec_feat.pt'
 # tpt = './embedding/tra_feat.pt'
 # tpt = './embedding/secondary.pt'
 # tpt = './embedding/primary.pt'
-tpt = './embedding/perturb_primary.pt'
+# tpt = './embedding/perturb_primary.pt'
+tpt = './embedding/perturb_ter.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -50,7 +51,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='primary',
+                    r_type='tertiary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     if args.feat == "ptr":
         features = tgraph.feat.detach()
         features = features.to(device)
-        MODEL_PT = './model_param/road_ptr.pt'
+        MODEL_PT = './model_param/road_ptr_ter.pt'
     elif args.feat == "rdn":
         try:
             features = torch.load('./random/road_rdn_emb.pt')
