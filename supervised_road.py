@@ -9,7 +9,8 @@ from tqdm import tqdm
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
-tpt = './embedding/perturb_primary.pt'
+# tpt = './embedding/perturb_primary.pt'
+tpt = './embedding/tra_feat.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -24,7 +25,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='primary',
+                    r_type='tertiary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -96,8 +97,11 @@ if __name__ == "__main__":
     indices = indices[:10]
     index = [tgraph.node_list[int(indice)] for indice in indices]
     
+    result = []
     tgc = tgraph.nxgraph.copy()
-    tgc.remove_nodes_from(index)
-    print(calculate_pairwise_connectivity(tgc) / initial_val)
-
-    
+    for node in index:
+        tgc.remove_node(node)
+        result.append(calculate_pairwise_connectivity(tgc) / initial_val)
+   
+    result = np.array(result)
+    np.savetxt("./results/sup_road_ter.txt", result)
