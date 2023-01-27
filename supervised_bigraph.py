@@ -1,4 +1,4 @@
-from model import ElecGraph, Regressor
+from model import ElecGraph, TraGraph, Bigraph, Regressor
 from utils import init_env
 
 import torch
@@ -6,12 +6,20 @@ import random
 import numpy as np
 from tqdm import tqdm
 
+FILE = './data/electricity/e10kv2tl.json'
 EFILE = './data/electricity/all_dict_correct.json'
+TFILE1 = './data/road/road_junc_map.json'
+TFILE2 = './data/road/road_type_map.json'
+TFILE3 = './data/road/tl_id_road2elec_map.json'
 ept = './embedding/elec_feat.pt'
+tpt = './embedding/tra_feat.pt'
+bpt = ('./embedding/bifeatures/bi_elec_feat.pt', './embedding/bifeatures/bi_tra_feat.pt') 
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
 KHOP=5
+
+MAX_DP = 660225576
 
 random.seed(20230125)
 device = torch.device("cuda:1" if torch.cuda.is_available else "cpu")
@@ -26,8 +34,31 @@ if __name__ == "__main__":
                     epochs=500,
                     pt_path=ept)
 
-    features = egraph.feat.detach()
-    inv_dict = {id:idx for idx, id in egraph.node_list.items()}
+    tgraph = TraGraph(file1=TFILE1, file2=TFILE2, file3=TFILE3,
+                    embed_dim=EMBED_DIM,
+                    hid_dim=HID_DIM,
+                    feat_dim=FEAT_DIM,
+                    r_type='tertiary',
+                    khop=KHOP,
+                    epochs=300,
+                    pt_path=tpt)
+
+    bigraph = Bigraph(efile=EFILE, tfile1=TFILE1, tfile2=TFILE2, tfile3=TFILE3, file=FILE,
+                    embed_dim=EMBED_DIM,
+                    hid_dim=HID_DIM,
+                    feat_dim=FEAT_DIM,
+                    r_type='tertiary',
+                    subgraph = (egraph, tgraph),
+                    khop=KHOP,
+                    epochs=600,
+                    pt_path=bpt)
+
+    elec_feat = bigraph.feat['power'].detach()
+    road_feat = bigraph.feat['junc'].detach()
+    features = torch.vstack((elec_feat,road_feat))
+    print(features.shape)
+    exit()
+    inv_dict = {id:idx for idx, id in bigraph.node_list.items()}
 
     elec_env = init_env()
     initial_power = elec_env.ruin([])
