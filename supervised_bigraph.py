@@ -1,5 +1,5 @@
 from model import ElecGraph, TraGraph, Bigraph, Regressor
-from utils import init_env
+from utils import init_env, influenced_tl_by_elec, calculate_pairwise_connectivity
 
 import torch
 import random
@@ -56,24 +56,32 @@ if __name__ == "__main__":
     elec_feat = bigraph.feat['power'].detach()
     road_feat = bigraph.feat['junc'].detach()
     features = torch.vstack((elec_feat,road_feat))
-    print(features.shape)
-    exit()
     inv_dict = {id:idx for idx, id in bigraph.node_list.items()}
 
     elec_env = init_env()
-    initial_power = elec_env.ruin([])
-    threshold = initial_power * 0.8
+    tgc = tgraph.nxgraph.copy()
+    orig_val = calculate_pairwise_connectivity(tgc)
+    threshold = 125000
 
     pos_samp = []
     neg_samp = []
 
-    nodes = [node for node in list(egraph.nxgraph.nodes()) if node//1e8 > 2 and node//1e8 < 5]
-   
-    for i in tqdm(range(1000), desc="Sampling: "):
+    nodes = [node for node in list(bigraph.nxgraph.nodes()) if node//1e8 > 2]
+    
+    for i in tqdm(range(500), desc="Sampling: "):
         elec_env.reset()
-        choosen = random.sample(nodes, 30)
-        power = elec_env.ruin(choosen)
-        if power <= threshold:
+        tgc = tgraph.nxgraph.copy()
+        choosen = random.sample(nodes, 40)
+        choosen_elec = [node for node in choosen if node//1e8 < 9]
+        choosen_road = [node for node in choosen if node//1e8 == 9]
+        
+        power, elec_state = elec_env.ruin(choosen_elec, flag=0)
+        choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+        tgc.remove_nodes_from(choosen_road)
+        pwc = calculate_pairwise_connectivity(tgc) / orig_val
+        reward_elec = power / MAX_DP
+        reward = (reward_elec + pwc) * 1e4
+        if reward > threshold:
             pos_samp.append(choosen)
         else:
             neg_samp.append(choosen)
@@ -118,14 +126,44 @@ if __name__ == "__main__":
     pred = regressor(features).flatten()
     sorted, indices = torch.sort(pred, descending=True)
 
-    indices = [indice for indice in indices if egraph.node_list[int(indice)]//1e8 > 2][:10]
+    indices = [indice for indice in indices if egraph.node_list[int(indice)]//1e8 > 2][:20]
     index = [egraph.node_list[int(indice)] for indice in indices]
+
+    print(index)
 
     result = []
     elec_env.reset()
+    tgc = tgraph.nxgraph.copy()
+
+    choosen_elec = []
+    choosen_road = []
+    total_reward = 0
+
+    t_val = 1
+    tpower = elec_env.ruin([])
+
     for node in index:
-        power = elec_env.ruin([node])
-        result.append(power)
+
+        h_val = t_val
+        hpower = tpower
+       
+        if node//1e8 == 9:
+            choosen_road.append(node)
+        else:
+            choosen_elec.append(node)
+
+        tpower,elec_state = elec_env.ruin(choosen_elec,flag=0)
+        choosen_road += influenced_tl_by_elec(elec_state, bigraph.elec2road, tgc)
+        tgc.remove_nodes_from(choosen_road)
+        t_val = calculate_pairwise_connectivity(tgc) / orig_val
+
+        reward_elec = (hpower - tpower) / MAX_DP
+        reward_road = h_val - t_val
+
+        reward = (reward_road + reward_elec) * 1e4
+        total_reward += reward
+
+        result.append(total_reward)
 
     result = np.array(result)
-    np.savetxt("./results/sup_elec.txt", result)
+    np.savetxt("./results/sup_bi.txt", result)
