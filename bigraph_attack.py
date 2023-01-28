@@ -58,7 +58,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='primary',
+                    r_type='tertiary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -67,7 +67,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='primary',
+                    r_type='tertiary',
                     subgraph = (egraph, tgraph),
                     khop=KHOP,
                     epochs=600,
