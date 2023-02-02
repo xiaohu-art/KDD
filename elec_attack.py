@@ -28,8 +28,8 @@ EFILE = './data/electricity/all_dict_correct.json'
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
 TFILE3 = './data/road/tl_id_road2elec_map.json'
-# ept = './embedding/elec_feat.pt'
-ept = './embedding/perturb_0.pt'
+ept = './embedding/elec_feat.pt'
+# ept = './embedding/perturb_0.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -104,7 +104,7 @@ if __name__ == "__main__":
             if egraph.node_list[node]// 100000000 < 3:
                 continue
             
-            print(node)
+            print(egraph.node_list[node])
             choosen.append(node)
             num -= 1
 

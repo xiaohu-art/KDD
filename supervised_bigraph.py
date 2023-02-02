@@ -126,8 +126,8 @@ if __name__ == "__main__":
     pred = regressor(features).flatten()
     sorted, indices = torch.sort(pred, descending=True)
 
-    indices = [indice for indice in indices if egraph.node_list[int(indice)]//1e8 > 2][:20]
-    index = [egraph.node_list[int(indice)] for indice in indices]
+    indices = [indice for indice in indices if bigraph.node_list[int(indice)]//1e8 > 2][:20]
+    index = [bigraph.node_list[int(indice)] for indice in indices]
 
     print(index)
 
@@ -141,7 +141,7 @@ if __name__ == "__main__":
 
     t_val = 1
     tpower = elec_env.ruin([])
-
+    
     for node in index:
 
         h_val = t_val

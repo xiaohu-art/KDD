@@ -29,8 +29,8 @@ ept = './embedding/elec_feat.pt'
 # tpt = './embedding/tra_feat.pt'
 # tpt = './embedding/secondary.pt'
 # tpt = './embedding/primary.pt'
-# tpt = './embedding/perturb_primary.pt'
-tpt = './embedding/perturb_ter.pt'
+tpt = './embedding/perturb_primary.pt'
+# tpt = './embedding/perturb_ter.pt'
 EMBED_DIM = 64
 HID_DIM = 128
 FEAT_DIM = 64
@@ -51,7 +51,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='tertiary',
+                    r_type='primary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
@@ -100,7 +100,7 @@ if __name__ == "__main__":
 
             node = agent.attack(features, state, choosen)
             choosen.append(node)
-
+            print(tgraph.node_list[node])
             tgc.remove_node(tgraph.node_list[node])
             num -= 1
             
@@ -112,7 +112,6 @@ if __name__ == "__main__":
 
             if len(choosen) == 20:
                 done = True
-                
         result = np.array(result)
         np.savetxt('./results/road_result_'+args.feat+'.txt', result)
 

@@ -23,8 +23,8 @@ args = parser.parse_args()
 
 # tpt = './embedding/primary.pt'
 tpt = './embedding/tra_feat.pt'
-# perturb_pth = './embedding/perturb_primary.pt'
-perturb_pth = './embedding/perturb_ter.pt'
+perturb_pth = './embedding/perturb_primary.pt'
+# perturb_pth = './embedding/perturb_ter.pt'
 
 TFILE1 = './data/road/road_junc_map.json'
 TFILE2 = './data/road/road_type_map.json'
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                     embed_dim=EMBED_DIM,
                     hid_dim=HID_DIM,
                     feat_dim=FEAT_DIM,
-                    r_type='tertiary',
+                    r_type='primary',
                     khop=KHOP,
                     epochs=300,
                     pt_path=tpt)
